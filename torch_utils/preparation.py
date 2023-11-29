@@ -11,7 +11,7 @@ from . import metrics as custom_metrics
 from . import losses as custom_losses  # Ensure your custom losses are imported
 
 # Function to prepare data loaders
-def prepare_data_loaders(data, loader_params, split_keys={"train": ["train_x", "train_y"], "val": ["val_x", "val_y"], "test": ["test_x", "test_y"]}):                         
+def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val": ["val_x", "val_y"], "test": ["test_x", "test_y"]}, dtypes = None, **loader_params):                         
     # Default loader parameters
     default_loader_params = {
         "num_workers": multiprocessing.cpu_count(),
@@ -21,6 +21,17 @@ def prepare_data_loaders(data, loader_params, split_keys={"train": ["train_x", "
     }
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
+
+    if dtypes is None or isinstance(dtypes, str) or isinstance(dtypes, torch.dtype):
+        dtypes = {split_name: [dtypes]*len(data_keys) for split_name, data_keys in split_keys.items()}
+    elif isinstance(dtypes, dict):
+        for split_name, data_keys in split_keys.items():
+            if split_name not in dtypes.keys():
+                dtypes[split_name] = [None]*len(data_keys)
+            elif not isinstance(dtypes[split_name], list):
+                dtypes[split_name] = [dtypes[split_name]]*len(data_keys)
+    else:
+        raise NotImplementedError(f"Unsupported dtype: {dtypes}")
 
     loaders = {}
     for split_name, data_keys in split_keys.items():
@@ -32,11 +43,7 @@ def prepare_data_loaders(data, loader_params, split_keys={"train": ["train_x", "
                     split_loader_params[key] = value[split_name]
         
         # Get data and create the TensorDataset
-        features = torch.tensor(data[data_keys[0]], dtype=torch.float32)
-        targets = torch.tensor(data[data_keys[1]], dtype=torch.float32)
-        # Create an indices tensor
-        indices = torch.arange(start=0, end=len(features), dtype=torch.long)
-        td = TensorDataset(features, targets, indices)
+        td = TensorDataset(*[torch.tensor(data[data_key], dtype=torch.float32) for data_key in data_keys])
 
         # Create the DataLoader
         loaders[split_name] = DataLoader(td, **split_loader_params)
@@ -141,7 +148,7 @@ def prepare_loss(loss):
     elif hasattr(custom_losses, loss_name):
         loss_module = custom_losses
     else:
-        raise NotImplementedError("The loss function is not found in torch.nn or custom_losses.")
+        raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn or custom_losses.")
 
     # Create the loss function using the name and parameters
     return getattr(loss_module, loss_name)(**loss_params)

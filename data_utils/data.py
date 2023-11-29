@@ -81,18 +81,41 @@ def get_local_data(name, data_folder="../data/", loader_params={}, **kwargs):
     :return: Loaded data as a dictionary.
     """
     # Construct the full path to the data file.
-    filename = os.path.join(data_folder, name)
+    path = os.path.join(data_folder, name)
 
-    # Get the file extension to determine the file format.
-    ext = filename.split(".")[-1]
+    #if filename is a folder, get all files in folder
+    if os.path.isdir(path):
+        filename = os.listdir(path)[0]
+        ext = filename.split(".")[-1]
+        app = [get_single_local_file(os.path.join(path,f), loader_params, ext, **kwargs) for f in os.listdir(path)]
 
-    if ext == "npz":
+        # Merge the data from all files into a single dictionary.
+        out = merge_data(app, ext)        
+    else:
+        # Get the file extension to determine the file format.
+        out = get_single_local_file(path, loader_params, **kwargs)
+
+    return out
+
+dict_extensions = ["npz"]
+array_extensions = ["npy", "csv"]
+
+def get_single_local_file(filename, loader_params={}, ext=None, **kwargs):
+    """
+    Load a single local file based on file format.
+    """
+
+    ext = filename.split(".")[-1] if ext is None else ext
+    
+    if ext in dict_extensions:
         # If the file is in NPZ format, load it as a dictionary of arrays.
         dct = load_npz(filename, loader_params, **kwargs)
         return dct
-    else:
-        # For other file formats (e.g., CSV, NPY), load the data as an "x" key in a dictionary.
-        app = load_csv(filename, loader_params, **kwargs) if ext == "csv" else load_numpy(filename, loader_params, **kwargs)
+    elif ext in array_extensions: # For other file formats (e.g., CSV, NPY), load the data as an "x" key in a dictionary.
+        if ext == "csv":
+            app = load_csv(filename, loader_params, **kwargs)
+        elif ext == "npy":
+            app = load_numpy(filename, loader_params, **kwargs)
         return {"x": app}
-
-    raise NotImplementedError  # Raise an error for unsupported file formats.
+    else:
+        raise NotImplementedError("DATA IMPORT NOT IMPLEMENTED FOR", ext)

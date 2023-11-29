@@ -64,3 +64,24 @@ def save_arrays(filename, arr):
     :param arr: Dictionary containing data to be saved.
     """
     np.savez(filename, **arr)
+
+def merge_data(data_list, ext):
+    """
+    Merge data from multiple files into a single dictionary.
+
+    :param data_list: List of dictionaries containing data to be merged.
+    :return: Merged data as a single dictionary.
+    """
+    out = {}
+    for data in data_list:
+        for key, value in data.items():
+            if key not in out:
+                out[key] = []
+            out[key].append(value)
+
+    for key, value in out.items():
+        if ext in ["csv","npy"]:
+            out[key] = np.stack(value)
+        else:
+            raise NotImplementedError("MERGING NOT IMPLEMENTED FOR", ext)
+    return out

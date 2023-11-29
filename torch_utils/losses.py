@@ -12,12 +12,11 @@ class ForwardNRL(nn.Module):
         self.matrix = None
         self.noise_rate = None
         self.num_classes =  None
-        self.epsilon = 1e-10  # Small constant to prevent NaN
      
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         p = F.softmax(input, dim=1)
         p = torch.matmul(p, self.matrix.t())
-        p = torch.log(p + self.epsilon)
+        p = torch.log(p) 
         loss = -torch.sum(p * target, dim=1)
         return torch.mean(loss)
     
@@ -47,10 +46,10 @@ class BackwardNRL(nn.Module):
      
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         log_probs = F.log_softmax(input, dim=1)
-        adjusted_probs = torch.matmul(self.matrix_inv, log_probs.t()).t()
-        loss = torch.sum(-1 * adjusted_probs * target, dim=1)
-        return torch.abs(torch.mean(loss))
-
+        log_probs = -1 * log_probs
+        a = torch.matmul(self.matrix_inv, log_probs.t()).t()
+        loss = torch.sum(a * target, dim=1) #minus here or above???
+        return torch.mean(loss)
 
     def _construct_matrix(self, noise_rate, num_classes, device):
         diagonal = 1 - noise_rate
@@ -122,8 +121,8 @@ class GCELoss(nn.Module):
         # Return the mean loss
         return torch.mean(loss)
 
-#https://github.com/RSTLess-research/NCOD-Learning-with-noisy-labels/tree/main
 class NCODLoss(nn.Module):
+    
     def __init__(self, sample_labels=None, num_examp=50000, num_classes=100, ratio_consistency=0, ratio_balance=0, total_epochs=4000, encoder_features=512):
         super(NCODLoss, self).__init__()
         self.mean = 1e-8

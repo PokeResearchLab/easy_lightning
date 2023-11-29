@@ -3,6 +3,7 @@ import os  # Import the os module for interacting with the operating system
 import re  # Import the re module for regular expressions
 import yaml  # Import the yaml module for YAML file handling
 from copy import deepcopy  # Import the deepcopy function from the copy module
+from itertools import zip_longest
 
 # Import some variables from another module
 from .var import *  # Import specific variables from the 'var' module
@@ -653,9 +654,9 @@ class ConfigObject(dict):
     :param cfg: The initial configuration dictionary.
     """
 
-    __getattr__ = dict.__getitem__  # Allow accessing dictionary keys as attributes
-    __setattr__ = dict.__setitem__  # Allow setting dictionary keys as attributes
-    __delattr__ = dict.__delitem__  # Allow deleting dictionary keys as attributes
+    # __getattr__ = dict.__getitem__  # Allow accessing dictionary keys as attributes
+    # __setattr__ = dict.__setitem__  # Allow setting dictionary keys as attributes
+    # __delattr__ = dict.__delitem__  # Allow deleting dictionary keys as attributes
 
     def __init__(self, cfg):
         """
@@ -774,7 +775,6 @@ class ConfigObject(dict):
         
         return return_value
 
-
     def sweep(self, relative_key):
         """
         Iterate through and yield values of a list-like key in the configuration.
@@ -788,14 +788,35 @@ class ConfigObject(dict):
 
         :param relative_key: The relative key to access and sweep through.
         :yield: Each value associated with the relative key.
+
+        ATTENTION: this may behave strangely with zip and multiple keys, cause zip is lazy and doesn't fully iterate through all the list, but as soon as one is exhausted, it stops. 
+        This means that one key is going to have its values restored, while the others are going to be left with the last value.
+        To avoid this, use itertools.zip_longest instead of zip.
         """
         
-        values = self[relative_key]  # Get the list-like values from the configuration
-        for value in values:
+        original_values = self[relative_key]  # Get the list-like values from the configuration
+        for value in original_values:
             self[relative_key] = value  # Set the current value to the relative key
             yield value  # Yield the current value
-        self[relative_key] = values  # Restore the original values in the configuration
+        self[relative_key] = original_values  # Restore the original values in the configuration
 
+    def sweep_multiple(self, *relative_keys):
+        """
+        Iterate through and yield values of multiple list-like keys in the configuration.
+
+        This method allows you to sweep through multiple list-like keys, such as when multiple values are stored under the same key.
+
+        Example:
+        cfg = ConfigObject({"key1": [1, 2, 3], "key2": [4, 5, 6]})
+        for value1, value2 in cfg.sweep_multiple(["key1", "key2"]):
+            print(value1, value2)
+
+        :param relative_keys: The relative keys to access and sweep through.
+        :yield: Each value associated with the relative keys.
+        """
+        
+        for values in zip_longest(*[self.sweep(relative_key) for relative_key in relative_keys]):
+            yield values
 
     def sweep_additions(self, relative_key, config_path="../cfg"):
         """

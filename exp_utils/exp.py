@@ -2,6 +2,7 @@ import os, random, string, sys
 import numpy as np
 import json
 import hashlib
+import copy
 
 from .cfg import ConfigObject
 
@@ -19,7 +20,9 @@ def separate_exp_cfg(cfg):
     :param cfg: The combined configuration dictionary.
     :return: A tuple containing the main configuration dictionary and the experiment configuration.
     """
-    exp_cfg = cfg.pop(experiment_universal_key)  # Remove exp config
+    # exp_cfg = cfg.pop(experiment_universal_key)  # Remove exp config
+    exp_cfg = cfg[experiment_universal_key]  # Remove exp config
+    cfg = ConfigObject({key:value for key,value in cfg.items() if key != experiment_universal_key})
     return cfg, exp_cfg
 
 # This function combines the experiment configuration with the main configuration.
@@ -48,7 +51,9 @@ def remove_nosave_keys(cfg, exp_cfg):
     :return: A tuple containing the updated main configuration dictionary and the experiment configuration.
     """
     for key in exp_cfg[experiment_nosave_key]:
-        exp_cfg[experiment_nosave_key][key] = cfg.pop(key)
+        #exp_cfg[experiment_nosave_key][key] = cfg.pop(key)
+        exp_cfg[experiment_nosave_key][key] = cfg[key]
+    cfg = ConfigObject({key:value for key,value in cfg.items() if key not in exp_cfg[experiment_nosave_key]})
     return cfg, exp_cfg
 
 # This function restores keys that were previously removed as "nosave."
@@ -179,7 +184,7 @@ def get_all_exp_list(exp_list_file):
 
 
 # This function retrieves the experiment ID based on the configuration.
-def get_experiment_id(cfg, exp_cfg=None, nosave_removed=False, reset_random_seed=True):
+def get_experiment_id(cfg, exp_cfg=None, nosave_removed=False, reset_random_seed=True, jsonify=True):
     """
     Retrieves the experiment ID based on the configuration.
 
@@ -206,6 +211,10 @@ def get_experiment_id(cfg, exp_cfg=None, nosave_removed=False, reset_random_seed
     if not nosave_removed:
         cfg, exp_cfg = remove_nosave_keys(cfg, exp_cfg)
         # Remove nosave keys from the configuration if necessary
+
+    # Jsonify the configuration
+    if jsonify:
+        cfg = jsonify_cfg(copy.deepcopy(cfg))
 
     # This could be made better using binary search in the file, if kept sorted, instead of loading the whole dict
     cfg_hash = get_set_hashing(cfg, exp_cfg)
@@ -241,7 +250,7 @@ def get_experiment_id(cfg, exp_cfg=None, nosave_removed=False, reset_random_seed
         # Restore the removed nosave keys if necessary
 
     if exp_cfg_was_None:
-        combine_exp_cfg(cfg, exp_cfg)
+        cfg = combine_exp_cfg(cfg, exp_cfg)
         # Re-combine the main configuration and experiment configuration if exp_cfg was initially None
 
     return exp_found, exp_id
@@ -255,7 +264,7 @@ def set_experiment_id(exp_cfg, exp_id):
     """
     exp_cfg["experiment_id"] = exp_id
 
-def get_set_experiment_id(cfg, exp_cfg=None, nosave_removed=False):
+def get_set_experiment_id(cfg, exp_cfg=None, nosave_removed=False, jsonify=True):
     """
     Get and set the experiment ID in the configuration.
 
@@ -270,11 +279,11 @@ def get_set_experiment_id(cfg, exp_cfg=None, nosave_removed=False):
         exp_cfg_was_None = True
         cfg, exp_cfg = separate_exp_cfg(cfg)  # Separate the experiment configuration from the main configuration.
 
-    exp_found, exp_id = get_experiment_id(cfg, exp_cfg, nosave_removed)  # Get or generate an experiment ID.
+    exp_found, exp_id = get_experiment_id(cfg, exp_cfg, nosave_removed, jsonify)  # Get or generate an experiment ID.
     set_experiment_id(exp_cfg, exp_id)  # Set the experiment ID in the experiment configuration.
 
     if exp_cfg_was_None:
-        combine_exp_cfg(cfg, exp_cfg)  # Combine the experiment configuration back into the main configuration.
+        cfg = combine_exp_cfg(cfg, exp_cfg)  # Combine the experiment configuration back into the main configuration.
 
     return exp_found, exp_id
 
@@ -427,7 +436,7 @@ def get_set_hashing(cfg, exp_cfg):
 
 
 # This function saves an experiment configuration.
-def save_experiment(cfg, exp_cfg=None, compute_exp_id=False):
+def save_experiment(cfg, exp_cfg=None, compute_exp_id=False, jsonify=True):
     """
     Saves an experiment configuration.
 
@@ -437,7 +446,6 @@ def save_experiment(cfg, exp_cfg=None, compute_exp_id=False):
     :param exp_cfg: The experiment-specific configuration.
     :param compute_exp_id: Whether to compute and set a new experiment ID.
     """
-    #cfg = jsonify(copy.deepcopy(cfg) #TODO
 
     exp_cfg_was_None = False
     if exp_cfg is None:
@@ -452,8 +460,10 @@ def save_experiment(cfg, exp_cfg=None, compute_exp_id=False):
     # Check if experiment_id is missing in exp_cfg
 
     if compute_exp_id or experiment_id_was_missing:
-        get_set_experiment_id(cfg, exp_cfg, nosave_removed=True)
+        get_set_experiment_id(cfg, exp_cfg, nosave_removed=True, jsonify=jsonify)
         # Compute and set a new experiment ID if requested or if it was missing
+    elif jsonify:
+        cfg = jsonify_cfg(copy.deepcopy(cfg))
 
     save_hashing(cfg, exp_cfg)
     # Calculate and save the hash of the configuration
@@ -472,9 +482,8 @@ def save_experiment(cfg, exp_cfg=None, compute_exp_id=False):
         # Remove the experiment_id and hash if they were missing initially
 
     if exp_cfg_was_None:
-        combine_exp_cfg(cfg, exp_cfg)
+        cfg = combine_exp_cfg(cfg, exp_cfg)
         # If exp_cfg was initially None, combine it back with cfg
-
 
 # This function saves the experiment's hash in the experiment list file.
 def save_hashing(cfg, exp_cfg):
@@ -539,35 +548,32 @@ def save_config(cfg, exp_cfg):
 
     return cfg  # Return the saved configuration
 
-"""
-# This commented-out code provides functions for converting data structures to JSON-serializable format.
-# You can uncomment and use this code when needed.
 
-# This function recursively converts non-JSON-serializable objects to JSON-serializable objects.
-def jsonify(obj):
-    if isinstance(obj, dict):
+### TO DOCUMENT BETTER!!!
+# This code provides functions for recursively converting non-JSON-serializable data structures to JSON-serializable format.
+def jsonify_cfg(obj):
+    if isinstance(obj, dict): # Recursively convert dictionaries
         for key, value in obj.items():
-            obj[key] = jsonify(value)
-    elif isinstance(obj, list):
+            obj[key] = jsonify_cfg(value)
+    elif isinstance(obj, list): # Recursively convert lists
         for i, value in enumerate(obj):
-            obj[i] = jsonify(value)
-    elif isinstance(obj, tuple):
+            obj[i] = jsonify_cfg(value)
+    elif isinstance(obj, tuple): # Recursively convert tuples
         obj = list(obj)
-        obj = jsonify(obj)
-    elif type(obj).__module__ == "numpy":
+        obj = jsonify_cfg(obj)
+    elif type(obj).__module__ == "numpy": # Convert numpy types
         obj = jsonify_numpys(obj)
-
     return obj
 
 # This function converts a NumPy array to a Python list.
 def jsonify_numpys(value):
-    if isinstance(value, np.ndarray):
+    if isinstance(value, np.ndarray): #If value is a numpy array, convert it to a list
         new_value = value.tolist()
     else:
-        if hasattr(value, "item"):
+        if hasattr(value, "item"): #If value is a single item using a numpy type, convert it to a python type
             new_value = value.item()
         else:
-            new_value = value
+            new_value = value #Otherwise, leave it as is
+            #raise TypeError("Unexpected type: ", type(value)) # Commented to avoid breaking code
     return new_value
-"""
 

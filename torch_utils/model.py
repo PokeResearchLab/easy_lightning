@@ -3,10 +3,6 @@ import torch
 import pytorch_lightning as pl
 from .losses import NCODLoss
 import torch.optim as optim
-import torch.nn as nn
-
-# You can use this loss object in your code
-
 #NCODLoss has manual optmization as written here https://lightning.ai/docs/pytorch/stable/model/manual_optimization.html# according
 #to the paper https://github.com/RSTLess-research/NCOD-Learning-with-noisy-labels/tree/main
 
@@ -26,12 +22,10 @@ class BaseNN(pl.LightningModule):
         
         # Check if the loss is an instance of NCODLoss and set automatic_optimization accordingly to False if True
         self.automatic_optimization = not isinstance(self.loss, NCODLoss)
-        print("Using automatic optimization set to: ",self.automatic_optimization)
+        print("USING AUTOMATIC OPTIMIZATION...",self.automatic_optimization)
 
         # Define the metrics to be used for evaluation
         self.metrics = metrics
-        
-        #self.cross_entropy_loss = nn.CrossEntropyLoss()
 
         # Prototype for customizing logging for multiple losses (if needed)
         # self.losses = loss
@@ -70,10 +64,10 @@ class BaseNN(pl.LightningModule):
     def configure_optimizers(self):
         if isinstance(self.loss, NCODLoss):
             optimizer1 = self.optimizer(self.main_module.parameters())
-            optimizer2 = optim.Adam(self.loss.parameters(), lr=0.001)
+            optimizer2 = optim.SGD(self.loss.parameters(), lr=0.1)
             # Define learning rate schedulers
             scheduler1 = {
-                'scheduler': optim.lr_scheduler.MultiStepLR(optimizer1, milestones=[80,120], gamma=0.1),
+                'scheduler': optim.lr_scheduler.MultiStepLR(optimizer1, milestones=[80, 120], gamma=0.1),
                 'interval': 'epoch',
                 'frequency': 1
             }
@@ -83,77 +77,32 @@ class BaseNN(pl.LightningModule):
         optimizer1 = self.optimizer(self.parameters())   
         return optimizer1
 
-    #def on_epoch_end(self):
+    def on_epoch_end(self):
         # Step through each scheduler
-        #print("UPDATING THE LR....")
-        #for scheduler in self.lr_schedulers():
-            #scheduler.step()     
+        for scheduler in self.lr_schedulers():
+            scheduler.step()
 
-    #def test_step(self, batch, batch_idx, split):
-        #x, y, index = batch
-        #y_hat,out = self(x)
-        #loss = self.cross_entropy_loss(y_hat, y)
-        
-        #self.custom_log(split+'_loss', loss)
-        
-        # Compute other metrics
-        #for metric_name, metric_func in self.metrics.items():
-            #metric_value = metric_func(y_hat, y)
-            #self.custom_log(split+'_'+metric_name, metric_value)
-        
-        #return loss
-        
     # Define a step function for processing a batch
     def step(self, batch, batch_idx, split):
-        x, y, index = batch
+        x, y = batch
         
-        #https://github.com/RSTLess-research/NCOD-Learning-with-noisy-labels/tree/main
-        if isinstance(self.loss, NCODLoss):
-            y_hat,out = self(x)
-            #print("SIZE OUTPUT",y_hat.size())
-            #print("SIZE ENCODER FEATURES", out.size())
-            loss = self.loss(index, y_hat, y, out, batch_idx, self.current_epoch)
-            
-        else:
-            y_hat,out = self(x)
-            loss = self.loss(y_hat, y)
+        y_hat = self(x)
+        loss = self.loss(y_hat, y)
 
         self.custom_log(split+'_loss', loss)
         
+        #se gli si passas una funzione aggiuntiva
+        # dict_output = funzione_aggiuntiva(y_hat)
+        # {"ranks": funzione_aggiuntiva(y_hat)}
+
+        #self.metrics = {"NDCGwithLinear:lambda y_hat, y: NDCG(y_hat, y, relevance=[1,1,1,1]),
+        #                 "NDCGwithExponential: lambda y_hat, y: NDCG(y_hat, y, relevance=[8,4,2,1])"}
+
         # Compute other metrics
         for metric_name, metric_func in self.metrics.items():
-            metric_value = metric_func(y_hat, y)
+            metric_value = metric_func(y_hat, y) #**dict_output
             self.custom_log(split+'_'+metric_name, metric_value)
 
-        if split == "train" and isinstance(self.loss, NCODLoss):
-            # Perform the backward pass to calculate gradients
-            self.manual_backward(loss)
-            
-            # Loop over all optimizers
-            for optimizer_idx, optimizer in enumerate(self.optimizers()):
-                #print("MANUAL OPTIMIZATION OF NCODLOSS: STEP AND ZERO GRAD FOR OPTIMIZER: ", optimizer_idx)
-                
-                # Update parameters of the current optimizer
-                optimizer.step()
-
-                # Zero gradients of the current optimizer
-                optimizer.zero_grad()
-
-                #if optimizer_idx == 0 and self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 1 == 10:
-                    #current_lr = optimizer.param_groups[0]['lr']
-                    #print(current_lr)
-                
-            schedulers = self.lr_schedulers()
-            if isinstance(schedulers, list):  # Check if it's a list of schedulers
-                if (self.trainer.current_epoch == 80 and self.trainer.is_last_batch) or (self.trainer.current_epoch == 120 and self.trainer.is_last_batch):
-                    for scheduler in schedulers:
-                        print("SCHEDULERS")
-                        scheduler.step()
-            else:  # If it's a single scheduler object
-                if (self.trainer.current_epoch == 80 and self.trainer.is_last_batch) or (self.trainer.current_epoch == 120 and self.trainer.is_last_batch):
-                    print("SINGLE SCHEDULER")
-                    schedulers.step()
-                    
         return loss
 
     # Training step
