@@ -91,6 +91,7 @@ def get_local_data(name, data_folder="../data/", loader_params={}, **kwargs):
         num_files = len(os.listdir(path))
         out = {} 
         for file_i,f in enumerate(os.listdir(path)):
+            print("Loading file",f,"(",file_i+1,"/",num_files,")")
             data = get_single_local_file(os.path.join(path,f), loader_params, ext, **kwargs)
 
             # Merge the data from all files into a single dictionary.
