@@ -1,6 +1,7 @@
 import os  # Import the 'os' module for operating system-related functions.
 
 from .file import *  # Import all modules and functions from the 'file' module.
+from .utils import *  # Import all modules and functions from the 'utils' module.
 from .transform import one_hot_encode_data, merge_splits, split_data, scale_data  # Import specific functions from the 'transform' module.
 from .uci import download_UCI  # Import the 'download_UCI' function from the 'uci' module.
 from .torch import get_torchvision_data  # Import the 'get_torchvision_data' function from the 'torch' module.
@@ -87,10 +88,17 @@ def get_local_data(name, data_folder="../data/", loader_params={}, **kwargs):
     if os.path.isdir(path):
         filename = os.listdir(path)[0]
         ext = filename.split(".")[-1]
-        app = [get_single_local_file(os.path.join(path,f), loader_params, ext, **kwargs) for f in os.listdir(path)]
+        num_files = len(os.listdir(path))
+        out = {} 
+        for file_i,f in enumerate(os.listdir(path)):
+            data = get_single_local_file(os.path.join(path,f), loader_params, ext, **kwargs)
 
-        # Merge the data from all files into a single dictionary.
-        out = merge_data(app, ext)        
+            # Merge the data from all files into a single dictionary.
+            # Continuously to avoid memory issues
+            for key, value in data.items():
+                if key not in out:
+                    out[key] = np.zeros((num_files, *value.shape))
+                out[key][file_i] = value  
     else:
         # Get the file extension to determine the file format.
         out = get_single_local_file(path, loader_params, **kwargs)
