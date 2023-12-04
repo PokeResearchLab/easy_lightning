@@ -6,7 +6,7 @@ import pytorch_lightning as pl  # Import PyTorch Lightning for training and logg
 from .model import BaseNN  # Import the BaseNN class from the model module
 
 # Function to create a neural network model
-def create_model(main_module, loss, optimizer, metrics={}, log_params={}, seed=42):
+def create_model(main_module, seed=42, **kwargs):
     """
     Create a PyTorch Lightning model.
 
@@ -24,7 +24,7 @@ def create_model(main_module, loss, optimizer, metrics={}, log_params={}, seed=4
     # Set a random seed for weight initialization
     pl.seed_everything(seed, workers=True)
     # Create the model using the BaseNN class
-    model = BaseNN(main_module, loss, optimizer, metrics, log_params)
+    model = BaseNN(main_module, **kwargs)
     return model
 
 # Function to train a PyTorch Lightning model
