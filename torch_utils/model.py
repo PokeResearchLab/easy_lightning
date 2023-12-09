@@ -25,10 +25,6 @@ class BaseNN(pl.LightningModule):
         # Store the primary loss function
         self.loss = loss
         
-        # Check if the loss is an instance of NCODLoss and set automatic_optimization accordingly to False if True
-        self.automatic_optimization = not isinstance(self.loss, NCODLoss)
-        print("USING AUTOMATIC OPTIMIZATION...",self.automatic_optimization)
-
         # Define the metrics to be used for evaluation
         self.metrics = metrics
 
@@ -64,8 +60,8 @@ class BaseNN(pl.LightningModule):
         self.custom_log = lambda name, value: self.log(name, value, **log_params)
 
     # Define the forward pass of the neural network
-    def forward(self, x):
-        return self.main_module(x)
+    def forward(self, *args, **kwargs):
+        return self.main_module(*args, **kwargs)
 
     # Configure the optimizer for training
     def configure_optimizers(self):
@@ -112,16 +108,20 @@ class BaseNN(pl.LightningModule):
         return loss
 
     def compute_model_output(self, batch, model_input_from_batch):
-        if model_input_from_batch is None or (len(model_input_from_batch)==1 and not isinstance(batch,list)): #leave batch as is
-            model_output = self(batch)
-        elif isinstance(model_input_from_batch, list):
-            model_input = [batch[i] for i in model_input_from_batch]
-            model_output = self(*model_input)
-        elif isinstance(model_input_from_batch, dict):
-            model_input = {k:batch[v] for k,v in model_input_from_batch.items()}
-            model_output = self(**model_input) 
-        else:
-            raise NotImplementedError("model_input_from_batch not recognized")
+        model_input_args, model_input_kwargs = self.get_input_args_kwargs((batch, model_input_from_batch))
+
+        model_output = self(*model_input_args, **model_input_kwargs)
+        
+        # if model_input_from_batch is None or (len(model_input_from_batch)==1 and not isinstance(batch,list)): #leave batch as is
+        #     model_output = self(batch)
+        # elif isinstance(model_input_from_batch, list):
+        #     model_input = [batch[i] for i in model_input_from_batch]
+        #     model_output = self(*model_input)
+        # elif isinstance(model_input_from_batch, dict):
+        #     model_input = {k:batch[v] for k,v in model_input_from_batch.items()}
+        #     model_output = self(**model_input)
+        # else:
+        #     raise NotImplementedError("model_input_from_batch not recognized")
         return model_output
     
     def get_input_args_kwargs(self, *args):
@@ -163,6 +163,7 @@ class BaseNN(pl.LightningModule):
     
     def compute_metrics(self, batch, metric_input_from_batch, model_output, metric_input_from_model_output, split_name):
         for metric_name, metric_func in self.metrics.items():
+            # If metric_input is a dictionary, routing is different for each metric
             if isinstance(metric_input_from_batch, dict) and metric_name in metric_input_from_batch:
                 app1 = metric_input_from_batch[metric_name]
             else:

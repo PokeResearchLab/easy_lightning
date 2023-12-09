@@ -99,7 +99,15 @@ def get_local_data(name, data_folder="../data/", loader_params={}, **kwargs):
             for key, value in data.items():
                 if key not in out:
                     out[key] = np.zeros((num_files, *value.shape))
-                out[key][file_i] = value  
+                if out[key][file_i].shape != value.shape: #increase size of out to match new data
+                    new_shape = tuple(np.maximum(out[key][file_i].shape, value.shape))
+                    if new_shape != out[key][file_i].shape:
+                        out[key].resize((num_files, *new_shape))
+                        print("WARNING: resizing",key,"to",new_shape)
+                    insertion_slices = tuple(slice(0, value.shape[idx]) for idx in range(len(value.shape)))
+                    out[key][file_i][insertion_slices] = value
+                else:
+                    out[key][file_i] = value
     else:
         # Get the file extension to determine the file format.
         out = get_single_local_file(path, loader_params, **kwargs)

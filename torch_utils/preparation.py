@@ -12,6 +12,8 @@ from . import losses as custom_losses  # Ensure your custom losses are imported
 
 # Function to prepare data loaders
 def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val": ["val_x", "val_y"], "test": ["test_x", "test_y"]}, dtypes = None, **loader_params):                         
+    # TODO: dict instead of list
+    
     # Default loader parameters
     default_loader_params = {
         "num_workers": multiprocessing.cpu_count(),
@@ -22,6 +24,7 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
 
+    print(split_keys)
     if dtypes is None or isinstance(dtypes, str) or isinstance(dtypes, torch.dtype):
         dtypes = {split_name: [dtypes]*len(data_keys) for split_name, data_keys in split_keys.items()}
     elif isinstance(dtypes, dict):
