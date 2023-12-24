@@ -107,7 +107,7 @@ def shutdown_dataloaders_workers():
         torch.distributed.destroy_process_group()
 
 # Function to load a PyTorch Lightning model from a checkpoint
-def load_model(model_cfg, path):
+def load_model(model_cfg, path, **kwargs):
     """
     Load a PyTorch Lightning model from a checkpoint.
 
@@ -119,7 +119,7 @@ def load_model(model_cfg, path):
     - model: The loaded PyTorch Lightning model.
     """
     # Load the model from the checkpoint file using the BaseNN class
-    model = BaseNN.load_from_checkpoint(path, **model_cfg)
+    model = BaseNN.load_from_checkpoint(path, **model_cfg, **kwargs)
     return model
 
 # Function to load log data from a CSV file

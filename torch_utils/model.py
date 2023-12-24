@@ -105,6 +105,7 @@ class BaseNN(pl.LightningModule):
                                                 split_name)
 
         #TODO: return loss is correct?
+        print("LOSS",loss)
         return loss
 
     def compute_model_output(self, batch, model_input_from_batch):
@@ -146,6 +147,17 @@ class BaseNN(pl.LightningModule):
         self.custom_log(split_name+'_loss', loss)
 
         return loss
+    
+    # def on_before_optimizer_step(self, optimizer):
+    #     # Compute the 2-norm for each layer
+    #     # If using mixed precision, the gradients are already unscaled here
+    #     for name, param in self.named_parameters():
+    #         if param.grad is not None:
+    #             param_norm = param.grad.data.max()  # Calculate L2 norm of gradients
+    #             print(name,param_norm)
+    #     # norms = pl.utilities.grad_norm(self.layer, norm_type=2)
+    #     # self.log_dict(norms)
+    #     # print(norms)
     
     #sum of different losses? or left to user?
     # if sum done by us, we could log each loss separately

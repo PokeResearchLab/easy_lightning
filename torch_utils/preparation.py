@@ -184,7 +184,7 @@ def prepare_metrics(metrics_info):
     metrics = torch.nn.ModuleDict(metrics)
     return metrics
 
-def prepare_optimizer(name, params):
+def prepare_optimizer(name, params={}):
     # Return a lambda function that creates an optimizer based on the provided name and parameters
     return lambda model_params: getattr(torch.optim, name)(model_params, **params)
 

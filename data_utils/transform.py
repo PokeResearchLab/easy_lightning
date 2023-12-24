@@ -106,17 +106,40 @@ def scale_data(data, scaling_method=None, scaling_params={}, scaling_fit_key="tr
 
     # Check if a scaling method is specified
     if scaling_method is not None:
+        print("Scaling data with method:", scaling_method)
         # Create a scaler object using the specified method and parameters
         data_scaler = getattr(preprocessing, scaling_method)(**scaling_params)
         
         # Fit the scaler on the specified data key
-        data_scaler.fit(data[scaling_fit_key], **scaling_fit_params)
+        reshape_and_scale(data[scaling_fit_key], data_scaler, fit=True, **scaling_fit_params)
 
         # Apply the scaler to each key in scaling_keys using specified parameters
         for key, params in zip(scaling_keys, scaling_transform_params):
-            data[key] = data_scaler.transform(data[key], **params)
+            data[key] = reshape_and_scale(data[key], data_scaler, **params)
 
     return data, data_scaler
+
+def reshape_and_scale(data, data_scaler, fit=False, **params):
+    """
+    Reshapes and scales the data using a specified scaler.
+
+    :param data: A dictionary-like object containing the data to be reshaped and scaled.
+    :param scaler: The scaler to use for scaling the data.
+
+    :return: The reshaped and scaled data dictionary.
+    """
+
+    if len(data.shape) > 2:
+        orig_shape = data.shape
+        data = data.reshape(-1)[:, None]
+    if fit:
+        data_scaler.fit(data, **params)
+    else:
+        data = data_scaler.transform(data)
+    if len(orig_shape) > 2:
+        data = data.reshape(orig_shape)
+
+    return data
 
 def one_hot_encode_data(data, encode_keys={"y", "train_y", "val_y", "test_y"}, encode_fit_key="train_y", onehotencoder_params={"sparse": False}, **kwargs):
     """
