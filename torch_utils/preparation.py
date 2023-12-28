@@ -24,15 +24,19 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
 
-    print(split_keys)
     if dtypes is None or isinstance(dtypes, str) or isinstance(dtypes, torch.dtype):
-        dtypes = {split_name: [dtypes]*len(data_keys) for split_name, data_keys in split_keys.items()}
+        if isinstance(dtypes, str):
+            dtypes = getattr(torch, dtypes)
+        dtypes = {split_name: {data_key:dtypes for data_key in data_keys} for split_name, data_keys in split_keys.items()}
     elif isinstance(dtypes, dict):
+        new_dtypes = {}
         for split_name, data_keys in split_keys.items():
-            if split_name not in dtypes.keys():
-                dtypes[split_name] = [None]*len(data_keys)
-            elif not isinstance(dtypes[split_name], list):
-                dtypes[split_name] = [dtypes[split_name]]*len(data_keys)
+            new_dtypes[split_name] = {}
+            for data_key in data_keys:
+                new_dtypes[split_name][data_key] = dtypes[data_key] if data_key in dtypes.keys() else None
+                if isinstance(new_dtypes[split_name][data_key], str):
+                    new_dtypes[split_name][data_key] = getattr(torch, new_dtypes[split_name][data_key])
+        dtypes = new_dtypes
     else:
         raise NotImplementedError(f"Unsupported dtype: {dtypes}")
 
@@ -46,7 +50,7 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
                     split_loader_params[key] = value[split_name]
         
         # Get data and create the TensorDataset
-        td = TensorDataset(*[torch.tensor(data[data_key], dtype=torch.float32) for data_key in data_keys])
+        td = TensorDataset(*[torch.tensor(data[data_key], dtype=dtypes[split_name][data_key]) for data_key in data_keys])
 
         # Create the DataLoader
         loaders[split_name] = DataLoader(td, **split_loader_params)

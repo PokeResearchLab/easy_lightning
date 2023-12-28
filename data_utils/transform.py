@@ -86,38 +86,38 @@ def split_data(data, split_keys={"x": ["train_x", "val_x", "test_x"], "y": ["tra
     return data
 
 
-def scale_data(data, scaling_method=None, scaling_params={}, scaling_fit_key="train_x", scaling_keys=["train_x", "val_x", "test_x"], scaling_fit_params={}, scaling_transform_params=[{}, {}, {}], **kwargs):
+def scale_data(data, scaling_method=None, scaling_params={}, scaling_keys = {"train_x": ["train_x", "val_x", "test_x"]}, scaling_fit_params={}, scaling_transform_params=[{}, {}, {}], **kwargs):
     """
     Scales the data using a specified scaling method and parameters.
 
     :param data: A dictionary-like object containing the data to be scaled.
     :param scaling_method: The scaling method to use (e.g., 'StandardScaler', 'MinMaxScaler', etc.), or None to skip scaling.
     :param scaling_params: Additional parameters for the scaling method.
-    :param scaling_fit_key: The key for the data used to fit the scaler.
-    :param scaling_keys: The keys for the data to be scaled.
+    :param scaling_keys: The keys for the data to be scaled. Each key represent the fit_key, the values are the keys to be scaled.
     :param scaling_fit_params: Additional parameters for fitting the scaler.
     :param scaling_transform_params: List of dictionaries with additional parameters for transforming each scaled dataset.
     :param kwargs: Additional keyword arguments (not used in this function).
 
     :return: A tuple containing the scaled data dictionary and the scaler used.
     """
-    # data_scaler will store the scaler object
-    data_scaler = None
+    # data_scaler will store the scaler objects
+    data_scalers = {}
 
     # Check if a scaling method is specified
     if scaling_method is not None:
         print("Scaling data with method:", scaling_method)
-        # Create a scaler object using the specified method and parameters
-        data_scaler = getattr(preprocessing, scaling_method)(**scaling_params)
-        
-        # Fit the scaler on the specified data key
-        reshape_and_scale(data[scaling_fit_key], data_scaler, fit=True, **scaling_fit_params)
+        for fit_key, transform_keys in scaling_keys.items():
+            # Create a scaler object using the specified method and parameters
+            data_scalers[fit_key] = getattr(preprocessing, scaling_method)(**scaling_params)
+            
+            # Fit the scaler on the specified data key
+            reshape_and_scale(data[fit_key], data_scalers[fit_key], fit=True, **scaling_fit_params)
 
-        # Apply the scaler to each key in scaling_keys using specified parameters
-        for key, params in zip(scaling_keys, scaling_transform_params):
-            data[key] = reshape_and_scale(data[key], data_scaler, **params)
+            # Apply the scaler to each key in scaling_keys using specified parameters
+            for transform_key, params in zip(transform_keys, scaling_transform_params):
+                data[transform_key] = reshape_and_scale(data[transform_key], data_scalers[fit_key], **params)
 
-    return data, data_scaler
+    return data, data_scalers
 
 def reshape_and_scale(data, data_scaler, fit=False, **params):
     """

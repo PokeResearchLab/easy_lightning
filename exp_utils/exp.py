@@ -563,6 +563,8 @@ def jsonify_cfg(obj):
         obj = jsonify_cfg(obj)
     elif type(obj).__module__ == "numpy": # Convert numpy types
         obj = jsonify_numpys(obj)
+    elif callable(obj):
+        obj = jsonify_function(obj)
     return obj
 
 # This function converts a NumPy array to a Python list.
@@ -577,3 +579,5 @@ def jsonify_numpys(value):
             #raise TypeError("Unexpected type: ", type(value)) # Commented to avoid breaking code
     return new_value
 
+def jsonify_function(value):
+    return value.__name__
