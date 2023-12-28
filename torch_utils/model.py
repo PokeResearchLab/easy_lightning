@@ -1,8 +1,6 @@
 # Import necessary libraries
 import torch
 import pytorch_lightning as pl
-from .losses import NCODLoss
-import torch.optim as optim
 #NCODLoss has manual optmization as written here https://lightning.ai/docs/pytorch/stable/model/manual_optimization.html# according
 #to the paper https://github.com/RSTLess-research/NCOD-Learning-with-noisy-labels/tree/main
 
@@ -12,7 +10,7 @@ class BaseNN(pl.LightningModule):
     def __init__(self, main_module, loss, optimizer, metrics={}, log_params={},
                  step_routing = {"model_input_from_batch":[0],
                                  "loss_input_from_batch": [1], "loss_input_from_model_output": [0],
-                                 "metric_input_from_batch": [1], "metric_input_from_model_output": [0]},
+                                 "metrics_input_from_batch": [1], "metrics_input_from_model_output": [0]},
                  **kwargs):
         super().__init__()
 
@@ -65,30 +63,15 @@ class BaseNN(pl.LightningModule):
 
     # Configure the optimizer for training
     def configure_optimizers(self):
-        if isinstance(self.loss, NCODLoss):
-            optimizer1 = self.optimizer(self.main_module.parameters())
-            optimizer2 = optim.SGD(self.loss.parameters(), lr=0.1)
-            # Define learning rate schedulers
-            scheduler1 = {
-                'scheduler': optim.lr_scheduler.MultiStepLR(optimizer1, milestones=[80, 120], gamma=0.1),
-                'interval': 'epoch',
-                'frequency': 1
-            }
-            print("USING OPTIMIZERS FOR NCOD_LOSSS...")
-            return [optimizer1, optimizer2], [scheduler1]
-            
-        optimizer1 = self.optimizer(self.parameters())   
-        return optimizer1
+        optimizer = self.optimizer(self.parameters())   
+        return optimizer
 
     def on_epoch_end(self):
         # Step through each scheduler
         for scheduler in self.lr_schedulers():
             scheduler.step()
 
-    #TODO: check if new step function is correct
-    #TODO: nome adatto per model_input_def
     # Define a step function for processing a batch
-
     def step(self, batch, batch_idx, dataloader_idx, split_name):
         #TODO: what to do with batch_idx and dataloader_idx?
         model_output = self.compute_model_output(batch, self.step_routing["model_input_from_batch"])
@@ -100,8 +83,8 @@ class BaseNN(pl.LightningModule):
 
         #TODO: should return metric_values?
         if len(self.metrics)>0:
-            metric_values = self.compute_metrics(batch, self.step_routing["metric_input_from_batch"],
-                                                model_output, self.step_routing["metric_input_from_model_output"],
+            metric_values = self.compute_metrics(batch, self.step_routing["metrics_input_from_batch"],
+                                                model_output, self.step_routing["metrics_input_from_model_output"],
                                                 split_name)
 
         #TODO: return loss is correct?
@@ -132,7 +115,10 @@ class BaseNN(pl.LightningModule):
                 input_args += [object[i] for i in keys]
             elif isinstance(keys, dict):
                 for k,i in keys.items():
-                    input_kwargs[k] = object[i]
+                    if i is None:
+                        input_kwargs[k] = object
+                    else:
+                        input_kwargs[k] = object[i]
             elif keys is None:
                 input_args.append(object)
             else:
@@ -173,22 +159,27 @@ class BaseNN(pl.LightningModule):
     #     self.custom_log(split_name+'_'+loss_name, loss)
     # self.custom_log(split_name+'_total_loss', total_loss)
     
-    def compute_metrics(self, batch, metric_input_from_batch, model_output, metric_input_from_model_output, split_name):
+    def compute_metrics(self, batch, metrics_input_from_batch, model_output, metrics_input_from_model_output, split_name):
         for metric_name, metric_func in self.metrics.items():
-            # If metric_input is a dictionary, routing is different for each metric
-            if isinstance(metric_input_from_batch, dict) and metric_name in metric_input_from_batch:
-                app1 = metric_input_from_batch[metric_name]
+            # If metrics_input is a dictionary, routing is different for each metric
+            if isinstance(metrics_input_from_batch, dict) and metric_name in metrics_input_from_batch:
+                app1 = metrics_input_from_batch[metric_name]
             else:
-                app1 = metric_input_from_batch
-            if isinstance(metric_input_from_model_output, dict) and metric_name in metric_input_from_model_output:
-                app2 = metric_input_from_model_output[metric_name]
+                app1 = metrics_input_from_batch
+            if isinstance(metrics_input_from_model_output, dict) and metric_name in metrics_input_from_model_output:
+                app2 = metrics_input_from_model_output[metric_name]
             else:
-                app2 = metric_input_from_model_output
+                app2 = metrics_input_from_model_output
 
-            metric_input_args, metric_input_kwargs = self.get_input_args_kwargs((batch, app1), (model_output, app2))
+            metrics_input_args, metrics_input_kwargs = self.get_input_args_kwargs((batch, app1), (model_output, app2))
 
-            metric_value = metric_func(*metric_input_args,**metric_input_kwargs)
-            self.custom_log(split_name+'_'+metric_name, metric_value)    
+            metric_value = metric_func(*metrics_input_args,**metrics_input_kwargs)
+
+            if isinstance(metric_value, dict):
+                for key in metric_value:
+                    self.custom_log(split_name+'_'+metric_name+'_'+key, metric_value[key])
+            else:
+                self.custom_log(split_name+'_'+metric_name, metric_value)
 
     # Training step
     def training_step(self, batch, batch_idx, dataloader_idx=0): return self.step(batch, batch_idx, dataloader_idx, "train")
