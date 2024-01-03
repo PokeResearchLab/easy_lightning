@@ -28,7 +28,7 @@ def create_model(main_module, seed=42, **kwargs):
     return model
 
 # Function to train a PyTorch Lightning model
-def train_model(trainer, model, loaders, train_key="train", val_key="val"):
+def train_model(trainer, model, loaders, train_key="train", val_key="val", tracker=None):
     """
     Train a PyTorch Lightning model.
 
@@ -52,8 +52,17 @@ def train_model(trainer, model, loaders, train_key="train", val_key="val"):
             raise NotImplementedError
     else:
         val_dataloaders = None
-    # Fit the model using the trainer
+    
+    if tracker is not None: tracker.start()
+    
     trainer.fit(model, loaders[train_key], val_dataloaders)
+    
+    if tracker is not None:
+        tracker.stop()
+        # Log tracked emissions
+        for key,value in tracker.final_emissions_data.values.items():
+            if not isinstance(value,str) and value is not None:
+                model.custom_log("train_"+key,value)
 
 # Function to validate a PyTorch Lightning model
 def validate_model(trainer, model, loaders, loaders_key="val"):
@@ -73,7 +82,7 @@ def validate_model(trainer, model, loaders, loaders_key="val"):
     trainer.validate(model, loaders[loaders_key])
 
 # Function to test a PyTorch Lightning model
-def test_model(trainer, model, loaders, loaders_key="test"):
+def test_model(trainer, model, loaders, loaders_key="test", tracker=None):
     """
     Test a PyTorch Lightning model.
 
@@ -86,8 +95,17 @@ def test_model(trainer, model, loaders, loaders_key="test"):
     Returns:
     - None
     """
+    if tracker is not None: tracker.start()
+    
     # Test the model using the trainer
     trainer.test(model, loaders[loaders_key])
+    
+    if tracker is not None:
+        tracker.stop()
+        # Log tracked emissions
+        for key,value in tracker.final_emissions_data.values.items():
+            if not isinstance(value,str) and value is not None:
+                model.custom_log("test_"+key,value)
 
 # Function to shutdown data loader workers in a distributed setting
 def shutdown_dataloaders_workers():
@@ -107,7 +125,7 @@ def shutdown_dataloaders_workers():
         torch.distributed.destroy_process_group()
 
 # Function to load a PyTorch Lightning model from a checkpoint
-def load_model(model_cfg, path, **kwargs):
+def load_model(model_cfg, path):
     """
     Load a PyTorch Lightning model from a checkpoint.
 
@@ -119,7 +137,7 @@ def load_model(model_cfg, path, **kwargs):
     - model: The loaded PyTorch Lightning model.
     """
     # Load the model from the checkpoint file using the BaseNN class
-    model = BaseNN.load_from_checkpoint(path, **model_cfg, **kwargs)
+    model = BaseNN.load_from_checkpoint(path, **model_cfg)
     return model
 
 # Function to load log data from a CSV file

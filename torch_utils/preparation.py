@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from .model import BaseNN
 from . import metrics as custom_metrics
 from . import losses as custom_losses  # Ensure your custom losses are imported
+from codecarbon import EmissionsTracker
 
 # Function to prepare data loaders
 def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val": ["val_x", "val_y"], "test": ["test_x", "test_y"]}, dtypes = None, **loader_params):                         
@@ -70,6 +71,7 @@ def prepare_experiment_id(original_trainer_params, experiment_id):
                     if callback_name == "ModelCheckpoint":
                         # Update the "dirpath" to include the experiment_id
                         callback_params["dirpath"] += experiment_id + "/"
+                        #TODO: if already existing: error? delete?
                     else:
                         # Print a warning message for unrecognized callback names
                         print(f"Warning: {callback_name} not recognized for adding experiment_id")
@@ -200,6 +202,9 @@ def prepare_model(model_cfg):
     model = BaseNN(**model_cfg)
     return model
 
+def prepare_emission_tracker(**tracker_kwargs):
+    tracker = EmissionsTracker(**tracker_kwargs)
+    return tracker
 
 """
 # Prototype for logging different configurations for metrics and losses
