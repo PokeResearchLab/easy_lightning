@@ -81,6 +81,8 @@ def prepare_experiment_id(original_trainer_params, experiment_id):
     if "logger" in trainer_params:
         # Update the "save_dir" in logger parameters to include the experiment_id
         trainer_params["logger"]["params"]["save_dir"] += experiment_id + "/"
+    
+    #TODO: avoid crash if params is not present or save_dir is not present
 
     return trainer_params
 
@@ -202,7 +204,9 @@ def prepare_model(model_cfg):
     model = BaseNN(**model_cfg)
     return model
 
-def prepare_emission_tracker(**tracker_kwargs):
+def prepare_emission_tracker(experiment_id, **tracker_kwargs):
+    # Update the "output_dir" in tracker parameters to include the experiment_id
+    tracker_kwargs["output_dir"] = tracker_kwargs.get("output_dir", "../out/log/") + experiment_id + "/"
     tracker = EmissionsTracker(**tracker_kwargs)
     return tracker
 

@@ -60,9 +60,9 @@ def train_model(trainer, model, loaders, train_key="train", val_key="val", track
     if tracker is not None:
         tracker.stop()
         # Log tracked emissions
-        for key,value in tracker.final_emissions_data.values.items():
-            if not isinstance(value,str) and value is not None:
-                model.custom_log("train_"+key,value)
+        # for key,value in tracker.final_emissions_data.values.items():
+        #     if not isinstance(value,str) and value is not None:
+        #         model.custom_log("train_"+key,value)
 
 # Function to validate a PyTorch Lightning model
 def validate_model(trainer, model, loaders, loaders_key="val"):
@@ -103,9 +103,9 @@ def test_model(trainer, model, loaders, loaders_key="test", tracker=None):
     if tracker is not None:
         tracker.stop()
         # Log tracked emissions
-        for key,value in tracker.final_emissions_data.values.items():
-            if not isinstance(value,str) and value is not None:
-                model.custom_log("test_"+key,value)
+        # for key,value in tracker.final_emissions_data.values.items():
+        #     if not isinstance(value,str) and value is not None:
+        #         model.custom_log("test_"+key,value)
 
 # Function to shutdown data loader workers in a distributed setting
 def shutdown_dataloaders_workers():
@@ -125,7 +125,7 @@ def shutdown_dataloaders_workers():
         torch.distributed.destroy_process_group()
 
 # Function to load a PyTorch Lightning model from a checkpoint
-def load_model(model_cfg, path):
+def load_model(model_cfg, path, **kwargs):
     """
     Load a PyTorch Lightning model from a checkpoint.
 
@@ -137,7 +137,7 @@ def load_model(model_cfg, path):
     - model: The loaded PyTorch Lightning model.
     """
     # Load the model from the checkpoint file using the BaseNN class
-    model = BaseNN.load_from_checkpoint(path, **model_cfg)
+    model = BaseNN.load_from_checkpoint(path, **model_cfg, **kwargs)
     return model
 
 # Function to load log data from a CSV file

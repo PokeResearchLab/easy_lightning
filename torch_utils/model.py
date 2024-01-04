@@ -88,7 +88,7 @@ class BaseNN(pl.LightningModule):
                                                 split_name)
 
         #TODO: return loss is correct?
-        print("LOSS",loss)
+        print("LOSS",loss.item())
         return loss
 
     def compute_model_output(self, batch, model_input_from_batch):

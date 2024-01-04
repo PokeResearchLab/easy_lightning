@@ -127,9 +127,9 @@ class NDCG(RecMetric):
             dcg = ((ranks<=top_k)*relevance/app).sum(-1)
             k = min(top_k,scores.shape[-1])
             sorted_k_relevance = relevance.sort(dim=-1, descending=True).values[...,:k] #get first k items in sorted_relevance on last dimension  
-            idcg = (sorted_k_relevance/torch.log(torch.arange(1,k+1)+1)).sum(-1)
+            idcg = (sorted_k_relevance/torch.log(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
             ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
-            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.mean(-1).sum())
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.mean(-1).sum()) #mean(-1) = mean over time
         self.total += relevance.shape[0]
     
 class MRR(RecMetric):
@@ -147,7 +147,7 @@ class MRR(RecMetric):
             #     mrr = 0
             # else:
             mrr = ((ranks<=top_k)*relevant*(1/ranks)).max(-1).values
-            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.sum())
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.mean(-1).sum())
         self.total += relevance.shape[0]
 
 #TODO: implementare altre metriche

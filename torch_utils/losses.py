@@ -4,6 +4,18 @@ import torch.nn.functional as F
 import math
 import numpy as np
 
+class SequentialCrossEntropyLoss(torch.nn.CrossEntropyLoss):
+    def __init__(self, padding_value=0, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.padding_value = padding_value
+
+    def forward(self, input, target, in_data):
+        is_not_padding = in_data != self.padding_value
+
+        output = super().forward(input[is_not_padding], target[is_not_padding]) #reduction = None
+
+        return output
+
 #https://openaccess.thecvf.com/content_cvpr_2017/papers/Patrini_Making_Deep_Neural_CVPR_2017_paper.pdf
 class ForwardNRL(nn.Module):
     def __init__(self):
