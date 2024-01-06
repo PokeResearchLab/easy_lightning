@@ -131,7 +131,6 @@ class NDCG(RecMetric):
         # Call not_nan_subset to subset scores, relevance where relevance is not nan
         kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
         scores, relevance = kwargs["scores"], kwargs["relevance"]
-        print(scores.shape, relevance.shape)
 
         # Update values
         ordered_items = scores.argsort(dim=-1, descending=True)
@@ -145,7 +144,6 @@ class NDCG(RecMetric):
             idcg = (sorted_k_relevance/torch.log(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
             ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
             setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.sum())
-            print("NDCG:",ndcg)
         self.total += relevance.shape[0]
     
 class MRR(RecMetric):
@@ -168,7 +166,6 @@ class MRR(RecMetric):
             # else:
             mrr = ((ranks<=top_k)*relevant*(1/ranks)).max(-1).values
             setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.sum())
-            print("MRR:",mrr)
         self.total += relevance.shape[0]
 
 #TODO: implementare altre metriche
