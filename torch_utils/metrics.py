@@ -113,11 +113,26 @@ class RecMetric(torchmetrics.Metric):
             out[f"@{k}"] = getattr(self, f"correct@{k}") / self.total
         return out
     
+    def not_nan_subset(self, **kwargs):
+        if "relevance" in kwargs:
+            # Subset other args, kwargs where relevance is not nan
+            relevance = kwargs["relevance"]
+            is_not_nan_per_sample = ~torch.isnan(relevance).any(-1)
+            kwargs = {k: v[is_not_nan_per_sample] for k, v in kwargs.items()}
+            # This keeps just the last dimension, the others are collapsed
+
+        return kwargs
+    
 class NDCG(RecMetric):
     def __init__(self, top_k=[5,10,20]):
         super().__init__(top_k)
 
     def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+        print(scores.shape, relevance.shape)
+
         # Update values
         ordered_items = scores.argsort(dim=-1, descending=True)
         ranks = ordered_items.argsort(dim=-1)+1
@@ -129,7 +144,8 @@ class NDCG(RecMetric):
             sorted_k_relevance = relevance.sort(dim=-1, descending=True).values[...,:k] #get first k items in sorted_relevance on last dimension  
             idcg = (sorted_k_relevance/torch.log(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
             ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
-            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.mean(-1).sum()) #mean(-1) = mean over time
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.sum())
+            print("NDCG:",ndcg)
         self.total += relevance.shape[0]
     
 class MRR(RecMetric):
@@ -137,6 +153,10 @@ class MRR(RecMetric):
         super().__init__(top_k)
 
     def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
         # Update values
         ordered_items = scores.argsort(dim=-1, descending=True)
         ranks = ordered_items.argsort(dim=-1)+1
@@ -147,7 +167,8 @@ class MRR(RecMetric):
             #     mrr = 0
             # else:
             mrr = ((ranks<=top_k)*relevant*(1/ranks)).max(-1).values
-            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.mean(-1).sum())
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.sum())
+            print("MRR:",mrr)
         self.total += relevance.shape[0]
 
 #TODO: implementare altre metriche
