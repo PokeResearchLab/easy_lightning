@@ -136,12 +136,12 @@ class NDCG(RecMetric):
         ordered_items = scores.argsort(dim=-1, descending=True)
         ranks = ordered_items.argsort(dim=-1)+1
 
-        app = torch.log(ranks+1)
+        app = torch.log2(ranks+1)
         for top_k in self.top_k:
             dcg = ((ranks<=top_k)*relevance/app).sum(-1)
             k = min(top_k,scores.shape[-1])
             sorted_k_relevance = relevance.sort(dim=-1, descending=True).values[...,:k] #get first k items in sorted_relevance on last dimension  
-            idcg = (sorted_k_relevance/torch.log(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
+            idcg = (sorted_k_relevance/torch.log2(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
             ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
             setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.sum())
         self.total += relevance.shape[0]
