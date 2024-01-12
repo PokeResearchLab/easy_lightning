@@ -28,7 +28,7 @@ def create_model(main_module, seed=42, **kwargs):
     return model
 
 # Function to train a PyTorch Lightning model
-def train_model(trainer, model, loaders, train_key="train", val_key="val", tracker=None):
+def train_model(trainer, model, loaders, train_key="train", val_key="val", seed=42, tracker=None):
     """
     Train a PyTorch Lightning model.
 
@@ -42,6 +42,8 @@ def train_model(trainer, model, loaders, train_key="train", val_key="val", track
     Returns:
     - None
     """
+    pl.seed_everything(seed, workers=True) #TODO: commentare un po' in giro
+
     # Check if validation data loaders are specified
     if val_key is not None:
         if isinstance(val_key, str):
@@ -65,7 +67,7 @@ def train_model(trainer, model, loaders, train_key="train", val_key="val", track
         #         model.custom_log("train_"+key,value)
 
 # Function to validate a PyTorch Lightning model
-def validate_model(trainer, model, loaders, loaders_key="val"):
+def validate_model(trainer, model, loaders, loaders_key="val", seed=42):
     """
     Validate a PyTorch Lightning model.
 
@@ -78,11 +80,13 @@ def validate_model(trainer, model, loaders, loaders_key="val"):
     Returns:
     - None
     """
+    pl.seed_everything(seed, workers=True) #TODO: commentare un po' in giro
+
     # Validate the model using the trainer
     trainer.validate(model, loaders[loaders_key])
 
 # Function to test a PyTorch Lightning model
-def test_model(trainer, model, loaders, loaders_key="test", tracker=None):
+def test_model(trainer, model, loaders, loaders_key="test", seed=42, tracker=None):
     """
     Test a PyTorch Lightning model.
 
@@ -95,6 +99,8 @@ def test_model(trainer, model, loaders, loaders_key="test", tracker=None):
     Returns:
     - None
     """
+    pl.seed_everything(seed, workers=True) #TODO: commentare un po' in giro
+
     if tracker is not None: tracker.start()
     
     # Test the model using the trainer

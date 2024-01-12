@@ -20,7 +20,8 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
         "num_workers": multiprocessing.cpu_count(),
         "pin_memory": True,
         "persistent_workers": True,
-        "drop_last": {"train": False, "val": False, "test": False}
+        "drop_last": {"train": False, "val": False, "test": False},
+        "shuffle": {"train": True, "val": True, "test": False}
     }
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
@@ -55,6 +56,12 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
 
         # Create the DataLoader
         loaders[split_name] = DataLoader(td, **split_loader_params)
+
+        # # Create iterator to ensure random_seed works:
+        # # It depends from the fact that, when using multiple workers,
+        # # the first iteration needs to create the iterator,
+        # # subsequent iterations will reset the iterator
+        # for _ in loaders[split_name]: break
     return loaders
 
 
@@ -141,7 +148,7 @@ def prepare_trainer(seed=42, **kwargs):
     return trainer
 
 # Function to prepare a loss function
-def prepare_loss(loss):
+def prepare_loss(loss, additional_module=None):
     if isinstance(loss, str):
         # If 'loss' is a string, assume it's the name of a loss function
         loss_name = loss
@@ -153,6 +160,20 @@ def prepare_loss(loss):
     else:
         raise NotImplementedError
 
+    # Check if the loss_name exists in torch.nn or custom_losses
+    if hasattr(torch.nn, loss_name):
+        loss_module = torch.nn
+    elif hasattr(custom_losses, loss_name):
+        loss_module = custom_losses
+    elif hasattr(additional_module, loss_name):
+        loss_module = additional_module
+    else:
+        raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn or custom_losses.")
+
+    # Create the loss function using the name and parameters
+    return getattr(loss_module, loss_name)(**loss_params)
+    
+def get_single_loss(loss_name, loss_params):
     # Check if the loss_name exists in torch.nn or custom_losses
     if hasattr(torch.nn, loss_name):
         loss_module = torch.nn

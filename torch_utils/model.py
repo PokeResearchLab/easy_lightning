@@ -111,6 +111,8 @@ class BaseNN(pl.LightningModule):
     def get_input_args_kwargs(self, *args):
         input_args, input_kwargs = [],{}
         for object,keys in args:
+            if isinstance(keys, int) or isinstance(keys, str):
+                keys = [keys]
             if isinstance(keys, list):
                 input_args += [object[i] for i in keys]
             elif isinstance(keys, dict):
@@ -126,11 +128,14 @@ class BaseNN(pl.LightningModule):
         return input_args, input_kwargs
 
     def compute_loss(self, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name):
-        loss_input_args, loss_input_kwargs = self.get_input_args_kwargs((batch, loss_input_from_batch), (model_output, loss_input_from_model_output))
-
-        loss = self.loss(*loss_input_args, **loss_input_kwargs)
-
-        self.custom_log(split_name+'_loss', loss)
+        if isinstance(self.loss, dict):
+            loss = 0
+            for loss_name, loss_func in self.loss.items():
+                # TODO: WEIGHT LOSS
+                loss += self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
+            self.custom_log(split_name+'_loss', loss)
+        else:
+            loss = self._compute("loss", self.loss, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
 
         return loss
     
@@ -160,26 +165,33 @@ class BaseNN(pl.LightningModule):
     # self.custom_log(split_name+'_total_loss', total_loss)
     
     def compute_metrics(self, batch, metrics_input_from_batch, model_output, metrics_input_from_model_output, split_name):
+        metric_values = {}
         for metric_name, metric_func in self.metrics.items():
-            # If metrics_input is a dictionary, routing is different for each metric
-            if isinstance(metrics_input_from_batch, dict) and metric_name in metrics_input_from_batch:
-                app1 = metrics_input_from_batch[metric_name]
-            else:
-                app1 = metrics_input_from_batch
-            if isinstance(metrics_input_from_model_output, dict) and metric_name in metrics_input_from_model_output:
-                app2 = metrics_input_from_model_output[metric_name]
-            else:
-                app2 = metrics_input_from_model_output
+            metric_values[metric_name] = self._compute(metric_name, metric_func, batch, metrics_input_from_batch, model_output, metrics_input_from_model_output, split_name)
+        return metric_values
+    
+    def _compute(self, name, func, batch, input_from_batch, model_output, input_from_model_output, split_name):
+        # If metrics_input is a dictionary, routing is different for each metric
+        if isinstance(input_from_batch, dict) and name in input_from_batch:
+            app1 = input_from_batch[name]
+        else:
+            app1 = input_from_batch
+        if isinstance(input_from_model_output, dict) and name in input_from_model_output:
+            app2 = input_from_model_output[name]
+        else:
+            app2 = input_from_model_output
 
-            metrics_input_args, metrics_input_kwargs = self.get_input_args_kwargs((batch, app1), (model_output, app2))
+        input_args, input_kwargs = self.get_input_args_kwargs((batch, app1), (model_output, app2))
 
-            metric_value = metric_func(*metrics_input_args,**metrics_input_kwargs)
+        value = func(*input_args,**input_kwargs)
 
-            if isinstance(metric_value, dict):
-                for key in metric_value:
-                    self.custom_log(split_name+'_'+metric_name+'_'+key, metric_value[key])
-            else:
-                self.custom_log(split_name+'_'+metric_name, metric_value)
+        if isinstance(value, dict):
+            for key in value:
+                self.custom_log(split_name+'_'+name+'_'+key, value[key])
+        else:
+            self.custom_log(split_name+'_'+name, value)
+
+        return value
 
     # Training step
     def training_step(self, batch, batch_idx, dataloader_idx=0): return self.step(batch, batch_idx, dataloader_idx, "train")
@@ -197,6 +209,11 @@ class BaseNN(pl.LightningModule):
 
 # Define functions for getting and loading torchvision models
 def get_torchvision_model(*args, **kwargs): return torchvision_utils.get_torchvision_model(*args, **kwargs)
+
+def get_torchvision_model_as_decoder(example_datum, *args, **kwargs):
+    forward_model = torchvision_utils.get_torchvision_model(*args, **kwargs)
+    inverted_model = torchvision_utils.invert_model(forward_model, example_datum)
+    return inverted_model
 
 def load_torchvision_model(*args, **kwargs): return torchvision_utils.load_torchvision_model(*args, **kwargs)
 

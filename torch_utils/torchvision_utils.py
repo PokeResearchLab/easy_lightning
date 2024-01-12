@@ -3,6 +3,7 @@ import torch  # Import the PyTorch library for deep learning
 import torchvision  # Import torchvision for pre-trained models
 from types import MethodType  # Import MethodType for method modification
 from .model import BaseNN  # Import the BaseNN class from the model module
+from copy import deepcopy  # Import deepcopy for model copying
 
 # Function to get a pre-trained TorchVision model
 def get_torchvision_model(name, torchvision_params={}, in_channels=None, out_features=None, out_as_image=False, keep_image_size=False, **kwargs):
@@ -158,14 +159,14 @@ def change_fc_out_features(name, module, out_features):
     if "resnet" in name:
         setattr(module_section, attr_name, type(current_fc)(in_features=current_fc.in_features,
                                                             out_features=out_features,
-                                                            bias=[True, False][current_fc.bias is None]))
+                                                            bias=current_fc.bias is not None))
     elif "squeezenet" in name:
         setattr(module_section, attr_name, type(current_fc)(in_channels=current_fc.in_channels,
                                                             out_channels=out_features,
                                                             kernel_size=current_fc.kernel_size,
                                                             stride=current_fc.stride,
                                                             padding=current_fc.padding,
-                                                            bias=[True, False][current_fc.bias is None]))
+                                                            bias=current_fc.bias is not None))
     else:
         raise NotImplementedError("Model name", name)
 
@@ -241,3 +242,122 @@ def load_torchvision_model(model_cfg, path):
     model = BaseNN.load_from_checkpoint(path, model=torchvision_model, **model_cfg)
     
     return model
+
+
+def invert_model(model, example_datum, keep_order=False):
+    """
+    Invert a model.
+
+    Parameters:
+    - model: The model to be inverted.
+    - example_datum: An example datum for the model.
+
+    Returns:
+    - inverted_model: The inverted model.
+    """
+
+    # Get the model's layers
+    layers = model.named_children()
+    #layers = [module for module in model.modules() if not isinstance(module, type(model))]
+
+    current_input = example_datum.detach().clone()
+
+    inverted_layers = torch.nn.ModuleList()
+    for layer_name,layer in layers:
+        if isinstance(layer, torch.nn.Sequential):
+            inverted_layer = invert_model(layer, current_input)
+        else:
+            inverted_layer, current_input = invert_layer(layer, current_input, inverted_layers)
+        inverted_layers.append(inverted_layer)
+        current_input = layer(current_input) #could decrease computational cost by separating computations for sequential layers
+
+    # Create a new model with the reversed layers
+    # if keep_order:
+    #     inverted_model = torch.nn.Sequential(*inverted_layers)
+    # else:
+    #     
+    inverted_model = torch.nn.Sequential(*inverted_layers[::-1])
+    
+    return inverted_model
+
+def invert_layer(layer, current_input, inverted_layers=[]):
+    if isinstance(layer, torch.nn.Linear):
+        if len(current_input.shape) > 2:
+            inverted_layers.append(torch.nn.Unflatten(1, current_input.shape[1:]))
+            current_input = torch.flatten(current_input, 1)
+        inverted_layer = torch.nn.Linear(in_features=layer.out_features,
+                                            out_features=layer.in_features,
+                                            bias=layer.bias is not None)
+    elif isinstance(layer, torch.nn.MaxPool2d) or isinstance(layer, torch.nn.AvgPool2d) or isinstance(layer, torch.nn.AdaptiveAvgPool2d):
+        inverted_layer = torch.nn.Upsample(size=current_input.shape[2:])
+    elif isinstance(layer, torch.nn.Conv2d):
+        rems = [(current_input.shape[2+i] + 2*layer.padding[i] - layer.dilation[i]*(layer.kernel_size[i]-1) - 1)%layer.stride[i] for i in range(2)]
+        if rems[0] != 0 or rems[1] != 0:
+            inverted_layers.append(torch.nn.Upsample(size=(current_input.shape[2], current_input.shape[3])))
+        inverted_layer = torch.nn.ConvTranspose2d(in_channels=layer.out_channels,
+                                                    out_channels=layer.in_channels,
+                                                    kernel_size=layer.kernel_size,
+                                                    stride=layer.stride,
+                                                    padding=layer.padding,
+                                                    output_padding=layer.output_padding,
+                                                    bias=layer.bias is not None,
+                                                    padding_mode=layer.padding_mode)
+    elif isinstance(layer, torch.nn.BatchNorm2d):
+        inverted_layer = torch.nn.BatchNorm2d(num_features=current_input.shape[1],
+                                                eps=layer.eps,
+                                                momentum=layer.momentum,
+                                                affine=layer.affine,
+                                                track_running_stats=layer.track_running_stats)
+    elif isinstance(layer, torch.nn.ReLU):
+        inverted_layer = torch.nn.ReLU()
+    elif isinstance(layer, torchvision.models.resnet.BasicBlock):
+        inplanes, planes = layer.conv1.in_channels, layer.conv1.out_channels
+        inverted_layer = torchvision.models.resnet.BasicBlock(inplanes=planes,
+                                                                planes=inplanes,
+                                                                stride=layer.stride,
+                                                                downsample=deepcopy(layer.downsample),
+                                                                norm_layer=type(layer.bn1))
+        inverted_layer.conv1 = torch.nn.ConvTranspose2d(in_channels=inverted_layer.conv1.in_channels,
+                                                            out_channels=inverted_layer.conv1.out_channels,
+                                                            kernel_size=inverted_layer.conv1.kernel_size,
+                                                            stride=inverted_layer.conv1.stride,
+                                                            padding=inverted_layer.conv1.padding,
+                                                            output_padding=inverted_layer.conv1.output_padding,
+                                                            bias=inverted_layer.conv1.bias is not None,
+                                                            padding_mode=inverted_layer.conv1.padding_mode)
+        inverted_layer.conv2 = torch.nn.ConvTranspose2d(in_channels=inverted_layer.conv2.in_channels,
+                                                            out_channels=inverted_layer.conv2.out_channels,
+                                                            kernel_size=inverted_layer.conv2.kernel_size,
+                                                            stride=inverted_layer.conv2.stride,
+                                                            padding=inverted_layer.conv2.padding,
+                                                            output_padding=inverted_layer.conv2.output_padding,
+                                                            bias=inverted_layer.conv2.bias is not None,
+                                                            padding_mode=inverted_layer.conv2.padding_mode)
+        if inverted_layer.downsample is not None:
+            inverted_layer.downsample[0] = torch.nn.ConvTranspose2d(in_channels=inverted_layer.downsample[0].out_channels,
+                                                                        out_channels=inverted_layer.downsample[0].in_channels,
+                                                                        kernel_size=inverted_layer.downsample[0].kernel_size,
+                                                                        stride=inverted_layer.downsample[0].stride,
+                                                                        padding=inverted_layer.downsample[0].padding,
+                                                                        output_padding=inverted_layer.downsample[0].output_padding,
+                                                                        bias=inverted_layer.downsample[0].bias is not None,
+                                                                        padding_mode=inverted_layer.downsample[0].padding_mode)
+            inverted_layer.downsample[1], _ = invert_layer(inverted_layer.downsample[1], current_input, inverted_layers)
+        
+        # inverted_layer = deepcopy(layer)
+        # previous_input2 = previous_input.clone()
+        # current_input2 = current_input.clone()
+        # for children_layer_name, children_layer in layer.named_children():
+        #     if children_layer_name == "downsample" and children_layer is not None:
+        #         setattr(inverted_layer, children_layer_name, invert_model(layer.downsample, current_input, previous_input, keep_order=True))
+        #         previous_input2 = current_input2
+        #         current_input2 = children_layer(current_input) + current_input2
+        #     else:
+        #         print(children_layer_name, current_input2.shape, previous_input2.shape)
+        #         new_layer, current_input2, previous_input2 = invert_layer(children_layer, current_input2, previous_input2, inverted_layers)
+        #         setattr(inverted_layer, children_layer_name, new_layer)
+        #         current_input2 = children_layer(current_input2)
+    else:
+        raise NotImplementedError("Layer type", type(layer))
+    
+    return inverted_layer, current_input

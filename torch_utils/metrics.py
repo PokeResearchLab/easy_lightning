@@ -123,7 +123,7 @@ class RecMetric(torchmetrics.Metric):
 
         return kwargs
     
-class NDCG(RecMetric):
+class CustomNDCG(RecMetric):
     def __init__(self, top_k=[5,10,20]):
         super().__init__(top_k)
 
@@ -146,7 +146,7 @@ class NDCG(RecMetric):
             setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.sum())
         self.total += relevance.shape[0]
     
-class MRR(RecMetric):
+class CustomMRR(RecMetric):
     def __init__(self, top_k=[5,10,20]):
         super().__init__(top_k)
 
@@ -161,12 +161,98 @@ class MRR(RecMetric):
 
         relevant = relevance>0
         for top_k in self.top_k:
-            # if len(ranks) == 0:
-            #     mrr = 0
-            # else:
             mrr = ((ranks<=top_k)*relevant*(1/ranks)).max(-1).values
             setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.sum())
         self.total += relevance.shape[0]
 
-#TODO: implementare altre metriche
+class CustomPrecision(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        relevant = relevance>0
+        for top_k in self.top_k:
+            precision = (ranks<=top_k)*relevant/top_k
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + precision.sum())
+        self.total += relevance.shape[0]
+
+class CustomRecall(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        relevant = relevance>0
+        for top_k in self.top_k:
+            recall = (ranks<=top_k)*relevant/relevant.sum(-1,keepdim=True)#torch.minimum(relevant.sum(-1,keepdim=True),top_k*torch.ones_like(relevant.sum(-1,keepdim=True)))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + recall.sum())
+        self.total += relevance.shape[0]
+
+class CustomF1(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+        self.precision = CustomPrecision(top_k)
+        self.recall = CustomRecall(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        self.precision.update(scores, relevance)
+        self.recall.update(scores, relevance)
+
+    def compute(self):
+        precision = self.precision.compute()
+        recall = self.recall.compute()
+        out = {}
+        for k in self.top_k:
+            out[f"@{k}"] = 2*(precision[f"@{k}"]*recall[f"@{k}"])/(precision[f"@{k}"]+recall[f"@{k}"])
+        return out
+
+class CustomPrecisionWithRelevance(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        for top_k in self.top_k:
+            precision = (ranks<=top_k)*relevance/(top_k*relevance.sum(-1,keepdim=True))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + precision.sum())
+        self.total += relevance.shape[0]
+
+class CustomMAP(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+        self.precision_at_k = CustomPrecisionWithRelevance(list(range(1,torch.max(torch.tensor(self.top_k))+1)))
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        self.precision_at_k.update(scores, relevance)
+
+    def compute(self):
+        for top_k in self.top_k:
+            for k in range(1,top_k+1):
+                setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + getattr(self.precision_at_k, f"correct@{k}"))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}")/k)
+        setattr(self,"total", getattr(self.precision_at_k, f"total"))
+        return super().compute()
 
