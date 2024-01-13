@@ -83,8 +83,6 @@ def separate_rows_and_columns(data, row_separate_keys={"x": ["header_x"]}, row_i
     """
     # Separate rows
     data = separate_rows(data, row_separate_keys, row_ids, del_after_separate)
-    print(data["y"].shape)
-    print(data["concept_names"].shape)
     
     # Separate columns
     data = separate_columns(data, column_separate_keys, column_ids, del_after_separate)
@@ -121,6 +119,21 @@ def transpose(data, swap_dict={"x": (0,1)}, **kwargs):
     """
     for key, axes in swap_dict.items():
         data[key] = np.transpose(data[key], axes)
+    return data
+
+def sort_by_column(data, column_dict={"x": 0}, **kwargs):
+    """
+    Sorts data by specified columns.
+
+    Args:
+        data (dict): A dictionary containing data arrays.
+        column_dict (dict): A dictionary mapping variables to columns.
+
+    Returns:
+        dict: A dictionary containing the sorted data arrays.
+    """
+    for key, column in column_dict.items():
+        data[key] = data[key][np.argsort(data[key][:, column])]
     return data
 
 def min_max_scale(data, scale_dict={"x": (0,255)}, **kwargs):

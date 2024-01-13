@@ -86,7 +86,7 @@ def split_data(data, split_keys={"x": ["train_x", "val_x", "test_x"], "y": ["tra
     return data
 
 
-def scale_data(data, scaling_method=None, scaling_params={}, scaling_keys = {"train_x": ["train_x", "val_x", "test_x"]}, scaling_fit_params={}, scaling_transform_params=[{}, {}, {}], **kwargs):
+def scale_data(data, scaling_method=None, scaling_params={}, scaling_keys = {"train_x": ["train_x", "val_x", "test_x"]}, scaling_fit_params={}, scaling_transform_params={}, **kwargs):
     """
     Scales the data using a specified scaling method and parameters.
 
@@ -100,6 +100,7 @@ def scale_data(data, scaling_method=None, scaling_params={}, scaling_keys = {"tr
 
     :return: A tuple containing the scaled data dictionary and the scaler used.
     """
+
     # data_scaler will store the scaler objects
     data_scalers = {}
 
@@ -114,8 +115,8 @@ def scale_data(data, scaling_method=None, scaling_params={}, scaling_keys = {"tr
             reshape_and_scale(data[fit_key], data_scalers[fit_key], fit=True, **scaling_fit_params)
 
             # Apply the scaler to each key in scaling_keys using specified parameters
-            for transform_key, params in zip(transform_keys, scaling_transform_params):
-                data[transform_key] = reshape_and_scale(data[transform_key], data_scalers[fit_key], **params)
+            for transform_key in transform_keys:
+                data[transform_key] = reshape_and_scale(data[transform_key], data_scalers[fit_key], **scaling_transform_params)
 
     return data, data_scalers
 

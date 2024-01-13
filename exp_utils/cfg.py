@@ -417,9 +417,8 @@ def raise_nosave_for_lists(cfg, new_cfg, i):
     
     # If new_cfg is a list, check the last element to see if it's a dictionary
     if isinstance(new_cfg, list):
-        app = new_cfg[-1] if isinstance(new_cfg[-1], dict) else {}
-        del new_cfg[-1]
-        new_cfg = app
+        new_cfg = new_cfg[-1] if isinstance(new_cfg[-1], dict) else {}
+        #del new_cfg[-1]
     
     # If new_cfg is a dictionary and contains experiment_nosave_key
     if isinstance(new_cfg, dict) and experiment_nosave_key in new_cfg:
@@ -428,6 +427,8 @@ def raise_nosave_for_lists(cfg, new_cfg, i):
         
         # Remove the experiment_nosave_key from new_cfg
         new_cfg.pop(experiment_nosave_key, None)
+        if new_cfg == {}:
+            del new_cfg
     
     return cfg
 
