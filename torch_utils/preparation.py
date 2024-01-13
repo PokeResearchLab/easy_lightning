@@ -151,15 +151,18 @@ def prepare_trainer(seed=42, **kwargs):
 def prepare_loss(loss, additional_module=None):
     if isinstance(loss, str):
         # If 'loss' is a string, assume it's the name of a loss function
-        loss_name = loss
-        loss_params = {}
+        loss = get_single_loss(loss, {}, additional_module)
     elif isinstance(loss, dict):
         # If 'loss' is a dictionary, assume it contains loss name and parameters
-        loss_name = list(loss.keys())[0]  # Accepts only one loss #TODO
-        loss_params = loss[loss_name]
+        loss = {}
+        for loss_name, loss_params in loss.items():
+            loss[loss_name] = get_single_loss(loss_params["name"], loss_params["params"], additional_module)
     else:
         raise NotImplementedError
-
+    
+    return loss
+    
+def get_single_loss(loss_name, loss_params, additional_module=None):
     # Check if the loss_name exists in torch.nn or custom_losses
     if hasattr(torch.nn, loss_name):
         loss_module = torch.nn
@@ -168,19 +171,7 @@ def prepare_loss(loss, additional_module=None):
     elif hasattr(additional_module, loss_name):
         loss_module = additional_module
     else:
-        raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn or custom_losses.")
-
-    # Create the loss function using the name and parameters
-    return getattr(loss_module, loss_name)(**loss_params)
-    
-def get_single_loss(loss_name, loss_params):
-    # Check if the loss_name exists in torch.nn or custom_losses
-    if hasattr(torch.nn, loss_name):
-        loss_module = torch.nn
-    elif hasattr(custom_losses, loss_name):
-        loss_module = custom_losses
-    else:
-        raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn or custom_losses.")
+        raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn, custom_losses or additional module")
 
     # Create the loss function using the name and parameters
     return getattr(loss_module, loss_name)(**loss_params)

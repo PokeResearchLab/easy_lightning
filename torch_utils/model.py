@@ -26,33 +26,8 @@ class BaseNN(pl.LightningModule):
         # Define the metrics to be used for evaluation
         self.metrics = metrics
 
+        # Define how batch and model output are routed to model, loss and metrics
         self.step_routing = step_routing
-        
-        #TODO: Check this part if still needed
-        # Prototype for customizing logging for multiple losses (if needed)
-        # self.losses = loss
-        # self.loss_log_params = {}
-        # self.loss_weights = {}
-        # for loss_name,loss_obj in self.losses.items():
-        #     if isinstance(loss_obj, dict):
-        #         self.losses[loss_name] = loss_obj["loss"]
-        #         self.loss_log_params[loss_name] = loss_obj.get("log_params", {})
-        #         self.loss_weights[loss_name] = loss_obj.get("weight", 1.0)
-        #     else:
-        #         self.losses[loss_name] = loss_obj
-        #         self.loss_log_params[loss_name] = {}
-        #         self.loss_weights[loss_name] = 1.0
-
-        # Prototype for customizing logging for multiple metrics (if needed)
-        # self.metrics = {}
-        # self.metrics_log_params = {}
-        # for metric_name, metric_obj in self.metrics.items():
-        #     if isinstance(metric_obj, dict):
-        #         self.metrics[metric_name] = metric_obj["metric"]
-        #         self.metrics_log_params[metric_name] = metric_obj.get("log_params", {})
-        #     else:
-        #         self.metrics[metric_name] = metric_obj
-        #         self.metrics_log_params[metric_name] = {}
 
         # Define a custom logging function
         self.custom_log = lambda name, value: self.log(name, value, **log_params)
