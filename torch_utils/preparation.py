@@ -21,7 +21,7 @@ def prepare_data_loaders(data, split_keys={"train": ["train_x", "train_y"], "val
         "pin_memory": True,
         "persistent_workers": True,
         "drop_last": {"train": False, "val": False, "test": False},
-        "shuffle": {"train": True, "val": True, "test": False}
+        "shuffle": {"train": True, "val": False, "test": False}
     }
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
@@ -148,15 +148,15 @@ def prepare_trainer(seed=42, **kwargs):
     return trainer
 
 # Function to prepare a loss function
-def prepare_loss(loss, additional_module=None):
-    if isinstance(loss, str):
+def prepare_loss(loss_info, additional_module=None):
+    if isinstance(loss_info, str):
         # If 'loss' is a string, assume it's the name of a loss function
-        loss = get_single_loss(loss, {}, additional_module)
-    elif isinstance(loss, dict):
+        loss = get_single_loss(loss_info, {}, additional_module)
+    elif isinstance(loss_info, dict):
         # If 'loss' is a dictionary, assume it contains loss name and parameters
         loss = {}
-        for loss_name, loss_params in loss.items():
-            loss[loss_name] = get_single_loss(loss_params["name"], loss_params["params"], additional_module)
+        for loss_name, loss_params in loss_info.items():
+            loss[loss_name] = get_single_loss(loss_params["name"], loss_params.get("params",{}), additional_module)
     else:
         raise NotImplementedError
     
@@ -164,12 +164,12 @@ def prepare_loss(loss, additional_module=None):
     
 def get_single_loss(loss_name, loss_params, additional_module=None):
     # Check if the loss_name exists in torch.nn or custom_losses
-    if hasattr(torch.nn, loss_name):
-        loss_module = torch.nn
+    if hasattr(additional_module, loss_name):
+        loss_module = additional_module
     elif hasattr(custom_losses, loss_name):
         loss_module = custom_losses
-    elif hasattr(additional_module, loss_name):
-        loss_module = additional_module
+    elif hasattr(torch.nn, loss_name):
+        loss_module = torch.nn
     else:
         raise NotImplementedError(f"The loss function {loss_name} is not found in torch.nn, custom_losses or additional module")
 
@@ -177,7 +177,7 @@ def get_single_loss(loss_name, loss_params, additional_module=None):
     return getattr(loss_module, loss_name)(**loss_params)
 
 
-def prepare_metrics(metrics_info):
+def prepare_metrics(metrics_info, additional_module=None):
     # Initialize an empty dictionary to store metrics
     metrics = {}
     
@@ -190,10 +190,12 @@ def prepare_metrics(metrics_info):
             raise NotImplementedError  # Raise an error for unsupported input types
         
         # Check if the metric_name exists in torchmetrics or custom_metrics
-        if hasattr(torchmetrics, metric_name):
-            metrics_package = torchmetrics
+        if hasattr(additional_module, metric_name):
+            metrics_package = additional_module
         elif hasattr(custom_metrics, metric_name):
             metrics_package = custom_metrics
+        elif hasattr(torchmetrics, metric_name):
+            metrics_package = torchmetrics
         else:
             raise NotImplementedError  # Raise an error if the metric_name is not found in any package
         

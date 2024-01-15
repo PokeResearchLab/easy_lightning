@@ -62,8 +62,7 @@ class BaseNN(pl.LightningModule):
                                                 model_output, self.step_routing["metrics_input_from_model_output"],
                                                 split_name)
 
-        #TODO: return loss is correct?
-        print("LOSS",loss.item())
+        #TODO: is return loss is correct?
         return loss
 
     def compute_model_output(self, batch, model_input_from_batch):
@@ -104,7 +103,7 @@ class BaseNN(pl.LightningModule):
 
     def compute_loss(self, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name):
         if isinstance(self.loss, dict):
-            loss = 0
+            loss = torch.tensor(0.0, device=self.device)
             for loss_name, loss_func in self.loss.items():
                 # TODO: WEIGHT LOSS
                 loss += self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)

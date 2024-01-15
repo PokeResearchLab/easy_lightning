@@ -134,7 +134,7 @@ def get_local_data(name, data_folder="../data/", local_key="x", loader_params={}
     return out
 
 dict_extensions = ["npz"]
-array_extensions = ["npy", "csv", "jpg"]
+array_extensions = ["npy", "csv", "jpg", "png"]
 
 def get_single_local_file(filename, loader_params={}, ext=None, key="x", **kwargs):
     """
@@ -152,7 +152,7 @@ def get_single_local_file(filename, loader_params={}, ext=None, key="x", **kwarg
             app = load_csv(filename, loader_params, **kwargs)
         elif ext == "npy":
             app = load_numpy(filename, loader_params, **kwargs)
-        elif ext in {"jpg"}:
+        elif ext in {"jpg","png"}:
             app = load_image(filename, loader_params, **kwargs)
         return {key: app}
     else:
