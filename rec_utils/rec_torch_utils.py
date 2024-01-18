@@ -60,13 +60,16 @@ class DictSequentialDataset(DictDataset):
                 x_function = lambda x: x
                 out_func = lambda x: x
 
-            self.data[key] = out_func(self.pad_list_of_tensors(self.data[key], padding_value=padding_value, x_function=x_function))
+            # If lookback and stride are not provided, set them based on the maximum length of values in the data
+            if lookback is None:
+                lookback = max([value.shape[-1] for value in data.values()]) + lookforward + simultaneous_lookforward
+            if stride is None:
+                stride = lookback
 
-        # If lookback and stride are not provided, set them based on the maximum length of values in the data
-        if lookback is None:
-            lookback = max([value.shape[-1] for value in data.values()])
-        if stride is None:
-            stride = lookback
+            needed_length = lookback + lookforward + simultaneous_lookforward
+            extra_pad = lambda x : x if needed_length <= x.shape[1] else torch.cat([x, torch.zeros((x.shape[0], needed_length - x.shape[1]),dtype=x.dtype)],dim=1)
+
+            self.data[key] = out_func(extra_pad(self.pad_list_of_tensors(self.data[key], padding_value=padding_value, x_function=x_function)))
 
         # Pair input and output sequences based on specified parameters
         self.pair_input_output(sequential_keys, padding_value, lookback, stride, lookforward, simultaneous_lookforward, out_seq_len, drop_original)
@@ -89,7 +92,7 @@ class DictSequentialDataset(DictDataset):
         input_indices = torch.stack([torch.arange(a-lookback,a) for a in range(max_len-lookforward-simultaneous_lookforward+1, max(lookback-1, max_len-lookforward-simultaneous_lookforward+1-out_seq_len), -stride)][::-1])
         # output_indices = torch.stack([torch.arange(a-lookback,a) for a in range(max_len, lookback-1+lookforward, -stride)][::-1])
         output_indices = torch.stack([torch.stack([torch.arange(b-simultaneous_lookforward+1,b+1) for b in torch.arange(a-lookback,a)]) for a in range(max_len, max(lookback-1+lookforward+simultaneous_lookforward-1,max_len-out_seq_len), -stride)][::-1])
-
+        
         # Get non-sequential keys in the data dictionary
         non_sequential_keys = [key for key in self.data.keys() if key not in sequential_keys]
 
@@ -188,13 +191,11 @@ class RecommendationDataloader(DataLoader):
     # Custom iterator method to yield batches with additional information
     def __iter__(self):
         if self.seed is not None: torch.manual_seed(self.seed)
-        print(torch.randint(0, 100, (10,)))
         for out in super().__iter__():
             # Add negative samples and relevance scores to the batch
             out["relevance"] = self.relevance_function(out)
             timesteps = out[self.out_key].shape[1]
             negatives = self.sample_negatives(out["uid"], timesteps).reshape(-1, timesteps, self.num_negatives)
-            print(negatives[0])
             out_is_padding = torch.isclose(out[self.out_key], self.padding_value*torch.ones_like(out[self.out_key])).all(-1) #.all(-1) because out can have multiple values, i.e. simultaneous_lookforward
             #negatives[out_is_padding] = self.padding_value # Pad negative if out (i.e. positives) is padding
             
@@ -292,7 +293,7 @@ def prepare_rec_data_loaders(datasets, data,
         "pin_memory": True,
         "persistent_workers": True,
         "drop_last": {"train": False, "val": False, "test": False}, #TODO: check specifics about drop last: losing data?
-        "shuffle": {"train": True, "val": True, "test": False},
+        "shuffle": {"train": True, "val": False, "test": False},
     }
     # Combine default and custom loader parameters
     loader_params = dict(list(default_loader_params.items()) + list(loader_params.items()))
@@ -313,12 +314,6 @@ def prepare_rec_data_loaders(datasets, data,
         
         # Create the DataLoader
         loaders[split_name] = RecommendationDataloader(datasets[split_name], original_seq, **split_loader_params)
-
-        # # Create iterator to ensure random_seed works:
-        # # It depends from the fact that, when using multiple workers,
-        # # the first iteration needs to create the iterator,
-        # # subsequent iterations will reset the iterator
-        # for _ in loaders[split_name]: break
 
     return loaders
 

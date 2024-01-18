@@ -13,3 +13,12 @@ pytorch_lightning
 
 # Pandas
 pandas
+
+#
+matplotlib
+
+codecarbon
+
+# requested inside some functions
+imageio
+scikit-learn

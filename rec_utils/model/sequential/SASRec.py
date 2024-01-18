@@ -23,15 +23,14 @@ class PointWiseFeedForward(torch.nn.Module):
 
 class SASRec(torch.nn.Module):
     #TODO: default values?
-    def __init__(self, num_users, num_items, lookback, hidden_units, dropout_rate, num_blocks, num_heads):
+    def __init__(self, num_items, lookback, hidden_units, dropout_rate, num_blocks, num_heads, **kwargs):
         super(SASRec, self).__init__()
 
-        self.user_num = num_users
         self.item_num = num_items
 
         # TODO: loss += args.l2_emb for regularizing embedding vectors during training
         # https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
-        self.item_emb = torch.nn.Embedding(self.item_num+1, hidden_units, padding_idx=0)
+        self.item_emb = torch.nn.Embedding(self.item_num+1, hidden_units, padding_idx=0) #+1 because padding
         self.pos_emb = torch.nn.Embedding(lookback, hidden_units) # TO IMPROVE #TODO?
         self.emb_dropout = torch.nn.Dropout(p=dropout_rate)
 
@@ -93,7 +92,9 @@ class SASRec(torch.nn.Module):
 
         return log_feats
     
-    def forward(self, input_seqs, poss_item_seqs):
+    def forward(self, input_seqs, poss_item_seqs, uid):
+        print("uid:", uid)
+
         log_feats = self.log2feats(input_seqs).unsqueeze(2)
         # unsqueeze(2) to make it (B, T, 1, E) for broadcasting with poss_item_embs (B, T, I, E)
 

@@ -1,112 +1,163 @@
-import torch.nn.functional as F
-import torchmetrics
 import torch
-import numpy as np
+import torchmetrics
 
-#TODO: add metrics definition here
-#class NDCG(torch.nn.Module):
-# prendere da RecBole
-
-class metrics(torch.nn.Module):
-    def __init__(self, y_hat):
+class RecMetric(torchmetrics.Metric):
+    def __init__(self, top_k=[5,10,20]):
         super().__init__()
-        self.metrics = torchmetrics.MetricCollection({
-            "accuracy": torchmetrics.Accuracy(),
-            "precision": torchmetrics.Precision(),
-            "recall": torchmetrics.Recall(),
-            "f1": torchmetrics.F1(),
-            "ndcg": torchmetrics.NDCG(),
-            "mrr": torchmetrics.MRR(),
-            "auc": torchmetrics.AUC(),
-            "map": torchmetrics.AveragePrecision(),
-            "rmse": torchmetrics.MeanSquaredError(),
-            "mae": torchmetrics.MeanAbsoluteError(),
-            "r2": torchmetrics.R2Score(),
-            "mse": torchmetrics.MeanSquaredError(),
-            "mape": torchmetrics.MeanAbsolutePercentageError(),
-            "rmsle": torchmetrics.MeanSquaredLogError(),
-            "msle": torchmetrics.MeanSquaredLogError(),
-            "soft_labels_accuracy": SoftLabelsAccuracy(),
-            #Recommendation metrics
-            "ndcg_at_k": NDCG(),
-        })
+        self.top_k = top_k if isinstance(top_k, list) else [top_k]
 
-        self.y_hat = y_hat
-        scores = 4 #da dove la prendiamo?
-        preds = scores.argsort(descending=True)
-        ranks = preds.argsort()
+        # Initialize state variables for correct predictions and total examples
+        for top_k in self.top_k:
+            self.add_state(f"correct@{top_k}", default=torch.tensor(0.), dist_reduce_fx="sum")
+        self.add_state(f"total", default=torch.tensor(0.), dist_reduce_fx="sum")
 
-        indexes = torch.arange(1, len(scores) + 1).unsqueeze(0) #?? controllare se è giusto per usare torchmetrics
-
-    def forward(self, preds: torch.Tensor, target: torch.Tensor):
-        # Calculate accuracy by comparing predicted and actual class labels
-        #return (preds.argmax(dim=1) == target.argmax(dim=1)).float().mean()
-        #return torchmetrics.functional.accuracy(preds, target)
-        return self.metrics(preds, target)
-
-
-class NDCG(torch.nn.Module):
-    def __init__(self, y_hat):
-        super().__init__()
-        #???
-
-        self.y_hat = y_hat
-
-        self.target = 'listaordinatapositiveitems' #da dove la prendiamo?
-        relevance_list = torch.ones(len(self.y_hat)) if relevance_list is None else relevance_list
-     
-    # lista di cose rilevanti: [] #ordinata target_y
-    # lista di relevance: [] #ordinata #default = 1
-    # relevance_list = torch.ones(len(target_y)) if relevance_list is None else relevance_list
-
-    # scores: - lista ordinata di scores
-
-    # parametro format="scores","preds","ranks": 
-    # a seconda del formato, si trasforma
-    # - True: se gli item sono già stati ordinati per score
-    #         ---> lista ordinata di item predetti
-    #         preds = scores
-    # - False: se gli item non sono stati ordinati per score
-    # preds = scores.argsort(descending=True)
-    # ranks = preds.argsort()
-
+    def compute(self):
+        # Compute accuracy as the ratio of correct predictions to total examples
+        out = {}
+        for k in self.top_k:
+            out[f"@{k}"] = getattr(self, f"correct@{k}") / self.total
+        return out
     
-    def dcg_at_k(self, scores, k):
-        # Discounted Cumulative Gain at position k
-        return np.sum((2 ** scores - 1) / np.log2(np.arange(2, len(scores) + 2)))[:k]
+    def not_nan_subset(self, **kwargs):
+        if "relevance" in kwargs:
+            # Subset other args, kwargs where relevance is not nan
+            relevance = kwargs["relevance"]
+            is_not_nan_per_sample = ~torch.isnan(relevance).any(-1)
+            kwargs = {k: v[is_not_nan_per_sample] for k, v in kwargs.items()}
+            # This keeps just the last dimension, the others are collapsed
 
-
-    def ndcg_at_k(self, target, k_values):
-        # Normalized Discounted Cumulative Gain at position k
-        ideal_dcg = self.dcg_at_k(sorted(target, reverse=True), max(k_values))
+        return kwargs
     
-        ndcg_values = {}
-        for k in k_values:
-            actual_dcg = self.dcg_at_k(self.y_hat, k)
-            
-            if ideal_dcg == 0:
-                ndcg_values[k] = 0
-            else:
-                ndcg_values[k] = actual_dcg / ideal_dcg
-        return ndcg_values
+class CustomNDCG(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
 
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
 
-    def forward(self, target: torch.Tensor, ks = [1,3,5,10,20,50,100]):
-        # Calculate accuracy by comparing predicted and actual class labels
-        #return (preds.argmax(dim=1) == target.argmax(dim=1)).float().mean()
-        #return torchmetrics.functional.accuracy(preds, target)
-        #return torchmetrics.functional.ndcg(preds, target, ks)
-        return self.ndcg_at_k(target, ks)
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
 
+        app = torch.log2(ranks+1)
+        for top_k in self.top_k:
+            dcg = ((ranks<=top_k)*relevance/app).sum(-1)
+            k = min(top_k,scores.shape[-1])
+            sorted_k_relevance = relevance.sort(dim=-1, descending=True).values[...,:k] #get first k items in sorted_relevance on last dimension  
+            idcg = (sorted_k_relevance/torch.log2(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
+            ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + ndcg.sum())
+        self.total += relevance.shape[0]
+    
+class CustomMRR(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
 
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
 
-# # Function to compute accuracy for neural network predictions
-# Custom Accuracy to compute accuracy with Soft Labels as a torch.Module
-# 
-class SoftLabelsAccuracy(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
 
-    def forward(self, preds: torch.Tensor, target: torch.Tensor):
-        # Calculate accuracy by comparing predicted and actual class labels
-        return (preds.argmax(dim=1) == target.argmax(dim=1)).float().mean()
+        relevant = relevance>0
+        for top_k in self.top_k:
+            mrr = ((ranks<=top_k)*relevant*(1/ranks)).max(-1).values
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + mrr.sum())
+        self.total += relevance.shape[0]
+
+class CustomPrecision(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        relevant = relevance>0
+        for top_k in self.top_k:
+            precision = (ranks<=top_k)*relevant/top_k
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + precision.sum())
+        self.total += relevance.shape[0]
+
+class CustomRecall(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        relevant = relevance>0
+        for top_k in self.top_k:
+            recall = (ranks<=top_k)*relevant/relevant.sum(-1,keepdim=True)#torch.minimum(relevant.sum(-1,keepdim=True),top_k*torch.ones_like(relevant.sum(-1,keepdim=True)))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + recall.sum())
+        self.total += relevance.shape[0]
+
+class CustomF1(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+        self.precision = CustomPrecision(top_k)
+        self.recall = CustomRecall(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        self.precision.update(scores, relevance)
+        self.recall.update(scores, relevance)
+
+    def compute(self):
+        precision = self.precision.compute()
+        recall = self.recall.compute()
+        out = {}
+        for k in self.top_k:
+            out[f"@{k}"] = 2*(precision[f"@{k}"]*recall[f"@{k}"])/(precision[f"@{k}"]+recall[f"@{k}"])
+        return out
+
+class CustomPrecisionWithRelevance(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        # Call not_nan_subset to subset scores, relevance where relevance is not nan
+        kwargs = self.not_nan_subset(scores=scores, relevance=relevance)
+        scores, relevance = kwargs["scores"], kwargs["relevance"]
+
+        # Update values
+        ordered_items = scores.argsort(dim=-1, descending=True)
+        ranks = ordered_items.argsort(dim=-1)+1
+
+        for top_k in self.top_k:
+            precision = (ranks<=top_k)*relevance/(top_k*relevance.sum(-1,keepdim=True))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + precision.sum())
+        self.total += relevance.shape[0]
+
+class CustomMAP(RecMetric):
+    def __init__(self, top_k=[5,10,20]):
+        super().__init__(top_k)
+
+        self.precision_at_k = CustomPrecisionWithRelevance(list(range(1,torch.max(torch.tensor(self.top_k))+1)))
+
+    def update(self, scores: torch.Tensor, relevance: torch.Tensor):
+        self.precision_at_k.update(scores, relevance)
+
+    def compute(self):
+        for top_k in self.top_k:
+            for k in range(1,top_k+1):
+                setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}") + getattr(self.precision_at_k, f"correct@{k}"))
+            setattr(self, f"correct@{top_k}", getattr(self, f"correct@{top_k}")/k)
+        setattr(self,"total", getattr(self.precision_at_k, f"total"))
+        return super().compute()
+

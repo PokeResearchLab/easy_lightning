@@ -51,6 +51,8 @@ def preprocess_dataset(name, data_folder="../data/raw", min_rating=None, min_ite
 
 
 def maybe_preprocess_raw_dataset(dataset_raw_folder, dataset_name):
+    print(os.path.isdir(dataset_raw_folder), all(os.path.isfile(os.path.join(dataset_raw_folder,filename)) for filename in get_rating_files_per_dataset(dataset_name)))
+    print(dataset_raw_folder, dataset_name)
     if os.path.isdir(dataset_raw_folder) and all(os.path.isfile(os.path.join(dataset_raw_folder,filename)) for filename in get_rating_files_per_dataset(dataset_name)):
         print('Ratings data already exists. Skip pre-processing')
         return
@@ -63,6 +65,8 @@ def get_rating_files_per_dataset(dataset_name):
         return ['ratings.dat']
     elif dataset_name == "ml-100k":
         return ['u.data']
+    elif dataset_name == "ml-20m":
+        return ['ratings.csv']
     elif dataset_name == "steam":
         return ['australian_user_reviews.csv']
     elif dataset_name == "amazon_beauty":
@@ -162,6 +166,11 @@ def load_ratings_df(dataset_raw_folder, dataset_name):
         df = pd.read_csv(file_path, sep='\t', header=None, engine="python")
         df.columns = ['uid', 'sid', 'rating', 'timestamp']
         return df
+    elif dataset_name == "ml-20m":
+        file_path = os.path.join(dataset_raw_folder,'ratings.csv')
+        df = pd.read_csv(file_path, sep=',', header=0, engine="python")
+        df.columns = ['uid', 'sid', 'rating', 'timestamp']
+        return df
     elif "amazon" in dataset_name or dataset_name=="steam":
         if dataset_name == "steam":
             orig_file_name = 'australian_user_reviews'
@@ -194,11 +203,11 @@ def load_ratings_df(dataset_raw_folder, dataset_name):
         raise NotImplementedError
     
 
-#TODO: another name is probably better:
 #implicit = don't use ratings
 #explicit = keep ratings
 def filter_ratings(df, min_rating):
     if min_rating is not None:
+        #df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
         df = df[df['rating'] >= min_rating]
     return df
 

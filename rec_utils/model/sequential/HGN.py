@@ -5,37 +5,34 @@ from torch.autograd import Variable
 
 
 class HGN(nn.Module):   #TODO CHECK FEDE
-    def __init__(self, cfg_data):
+    def __init__(self, L, dims, num_items, num_users, **kwargs):
         super(HGN, self).__init__()
 
-        # init args
-        L = cfg_data['L']
-        dims = cfg_data['d']
-        num_users = cfg_data['num_users']
-        num_items = cfg_data['num_items']
-
+        #L = 200
         # user and item embeddings
-        self.user_embeddings = nn.Embedding(num_users, dims).to(next(self.parameters()).device)
-        self.item_embeddings = nn.Embedding(num_items, dims).to(next(self.parameters()).device)
+        self.user_embeddings = nn.Embedding(num_users, dims)#.to(next(self.parameters()).device)
+        self.item_embeddings = nn.Embedding(num_items, dims)#.to(next(self.parameters()).device)
+        
 
-        self.feature_gate_item = nn.Linear(dims, dims).to(next(self.parameters()).device)
-        self.feature_gate_user = nn.Linear(dims, dims).to(next(self.parameters()).device)
+        self.feature_gate_item = nn.Linear(dims, dims)#.to(next(self.parameters()).device)
+        self.feature_gate_user = nn.Linear(dims, dims)#.to(next(self.parameters()).device)
 
-        self.instance_gate_item = Variable(torch.zeros(dims, 1).type(torch.FloatTensor), requires_grad=True).to(next(self.parameters()).device)
-        self.instance_gate_user = Variable(torch.zeros(dims, L).type(torch.FloatTensor), requires_grad=True).to(next(self.parameters()).device)
+        self.instance_gate_item = Variable(torch.zeros(dims, 1).type(torch.FloatTensor), requires_grad=True)#.to(next(self.parameters()).device)
+        self.instance_gate_user = Variable(torch.zeros(dims, L).type(torch.FloatTensor), requires_grad=True)#.to(next(self.parameters()).device)
         self.instance_gate_item = torch.nn.init.xavier_uniform_(self.instance_gate_item)
         self.instance_gate_user = torch.nn.init.xavier_uniform_(self.instance_gate_user)
 
-        self.W2 = nn.Embedding(num_items, dims, padding_idx=0).to(next(self.parameters()).device)
-        self.b2 = nn.Embedding(num_items, 1, padding_idx=0).to(next(self.parameters()).device)
+        self.W2 = nn.Embedding(num_items+1, dims, padding_idx=0)#.to(next(self.parameters()).device)
+        self.b2 = nn.Embedding(num_items+1, 1, padding_idx=0)#.to(next(self.parameters()).device)
 
-        # weight initialization
-        self.user_embeddings.weight.data.normal_(0, 1.0 / self.user_embeddings.embedding_dim)
-        self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
-        self.W2.weight.data.normal_(0, 1.0 / self.W2.embedding_dim)
-        self.b2.weight.data.zero_()
+        #print("PIPPO", self.b2.device)
+        # # weight initialization
+        # self.user_embeddings.weight.data.normal_(0, 1.0 / self.user_embeddings.embedding_dim)
+        # self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
+        # self.W2.weight.data.normal_(0, 1.0 / self.W2.embedding_dim)
+        # self.b2.weight.data.zero_()
 
-    def forward(self, item_seq, user_ids, items_to_predict, for_pred=False):
+    def forward(self, item_seq, items_to_predict, user_ids, for_pred=False):
         item_embs = self.item_embeddings(item_seq)
         user_emb = self.user_embeddings(user_ids)
 
@@ -43,6 +40,8 @@ class HGN(nn.Module):   #TODO CHECK FEDE
         gate = torch.sigmoid(self.feature_gate_item(item_embs) + self.feature_gate_user(user_emb).unsqueeze(1))
         gated_item = item_embs * gate
 
+
+        print(gated_item.shape, self.instance_gate_item.shape, user_emb.shape, self.instance_gate_user.shape)
         # instance gating
         instance_score = torch.sigmoid(torch.matmul(gated_item, self.instance_gate_item.unsqueeze(0)).squeeze() +
                                        user_emb.mm(self.instance_gate_user))
