@@ -21,8 +21,7 @@ def create_model(main_module, seed=42, **kwargs):
     Returns:
     - model: The PyTorch Lightning model.
     """
-    # Set a random seed for weight initialization
-    pl.seed_everything(seed, workers=True)
+    pl.seed_everything(seed) # Set a random seed for weight initialization
     # Create the model using the BaseNN class
     model = BaseNN(main_module, **kwargs)
     return model
@@ -42,7 +41,7 @@ def train_model(trainer, model, loaders, train_key="train", val_key="val", seed=
     Returns:
     - None
     """
-    pl.seed_everything(seed, workers=True) #TODO: commentare un po' in giro
+    pl.seed_everything(seed) # Set a random seed for deterministic training
 
     # Check if validation data loaders are specified
     if val_key is not None:
@@ -86,7 +85,7 @@ def validate_model(trainer, model, loaders, loaders_key="val", seed=42):
     trainer.validate(model, loaders[loaders_key])
 
 # Function to test a PyTorch Lightning model
-def test_model(trainer, model, loaders, loaders_key="test", seed=42, tracker=None):
+def test_model(trainer, model, loaders, loaders_key="test", tracker=None, seed=42):
     """
     Test a PyTorch Lightning model.
 

@@ -94,9 +94,8 @@ def prepare_experiment_id(original_trainer_params, experiment_id):
     return trainer_params
 
 # Function to prepare callbacks
-def prepare_callbacks(trainer_params):
-    # Seed the random number generator, although this is probably unnecessary
-    pl.seed_everything(42, workers=True)  # Probably useless
+def prepare_callbacks(trainer_params, seed=42):
+    pl.seed_everything(seed) # Seed the random number generator
 
     # Initialize an empty list for callbacks
     callbacks = []
@@ -124,8 +123,8 @@ def prepare_callbacks(trainer_params):
 
 
 # Function to prepare a logger based on trainer parameters
-def prepare_logger(trainer_params):
-    pl.seed_everything(42, workers=True)  # Probably useless
+def prepare_logger(trainer_params, seed=42):
+    pl.seed_everything(seed) # Seed the random number generator
     logger = None
     if "logger" in trainer_params:
         # Get the logger class based on its name and initialize it with parameters
@@ -133,14 +132,14 @@ def prepare_logger(trainer_params):
     return logger
 
 # Function to prepare a PyTorch Lightning Trainer instance
-def prepare_trainer(seed=42, **kwargs):
-    pl.seed_everything(seed, workers=True)  # Useless?
+def prepare_trainer(seed=42, **trainer_kwargs):
+    pl.seed_everything(seed) # Seed the random number generator
 
     # Default trainer parameters
     default_trainer_params = {"enable_checkpointing": False, "accelerator": "auto", "devices": "auto"}
 
     # Combine default parameters with user-provided kwargs
-    trainer_params = dict(list(default_trainer_params.items()) + list(kwargs.items()))
+    trainer_params = dict(list(default_trainer_params.items()) + list(trainer_kwargs.items()))
 
     # Create a Trainer instance with the specified parameters
     trainer = pl.Trainer(**trainer_params)
@@ -148,7 +147,8 @@ def prepare_trainer(seed=42, **kwargs):
     return trainer
 
 # Function to prepare a loss function
-def prepare_loss(loss_info, additional_module=None):
+def prepare_loss(loss_info, additional_module=None, seed=42):
+    pl.seed_everything(seed) # Seed the random number generator
     if isinstance(loss_info, str):
         # If 'loss' is a string, assume it's the name of a loss function
         loss = get_single_loss(loss_info, {}, additional_module)
@@ -157,6 +157,7 @@ def prepare_loss(loss_info, additional_module=None):
         loss = {}
         for loss_name, loss_params in loss_info.items():
             loss[loss_name] = get_single_loss(loss_params["name"], loss_params.get("params",{}), additional_module)
+        loss = torch.nn.ModuleDict(loss)
     else:
         raise NotImplementedError
     
@@ -177,7 +178,8 @@ def get_single_loss(loss_name, loss_params, additional_module=None):
     return getattr(loss_module, loss_name)(**loss_params)
 
 
-def prepare_metrics(metrics_info, additional_module=None):
+def prepare_metrics(metrics_info, additional_module=None, seed=42):
+    pl.seed_everything(seed) # Seed the random number generator
     # Initialize an empty dictionary to store metrics
     metrics = {}
     
@@ -206,13 +208,14 @@ def prepare_metrics(metrics_info, additional_module=None):
     metrics = torch.nn.ModuleDict(metrics)
     return metrics
 
-def prepare_optimizer(name, params={}):
+def prepare_optimizer(name, params={}, seed=42):
+    pl.seed_everything(seed) # Seed the random number generator
     # Return a lambda function that creates an optimizer based on the provided name and parameters
     return lambda model_params: getattr(torch.optim, name)(model_params, **params)
 
 def prepare_model(model_cfg):
     # Seed the random number generator for weight initialization
-    pl.seed_everything(model_cfg["seed"], workers=True)
+    pl.seed_everything(model_cfg["seed"]) # Seed the random number generator
     
     # Create a model instance based on the provided configuration
     model = BaseNN(**model_cfg)

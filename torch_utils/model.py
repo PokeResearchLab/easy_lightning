@@ -32,6 +32,9 @@ class BaseNN(pl.LightningModule):
         # Define a custom logging function
         self.custom_log = lambda name, value: self.log(name, value, **log_params)
 
+        # loss_lambdas = torch.ones(len(self.loss), requires_grad=False)
+        # self.register_buffer('loss_lambdas', loss_lambdas)
+
     # Define the forward pass of the neural network
     def forward(self, *args, **kwargs):
         return self.main_module(*args, **kwargs)
@@ -102,12 +105,22 @@ class BaseNN(pl.LightningModule):
         return input_args, input_kwargs
 
     def compute_loss(self, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name):
-        if isinstance(self.loss, dict):
+        if isinstance(self.loss, torch.nn.ModuleDict):
             loss = torch.tensor(0.0, device=self.device)
             for loss_name, loss_func in self.loss.items():
                 # TODO: WEIGHT LOSS
                 loss += self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
             self.custom_log(split_name+'_loss', loss)
+
+            # TODO: adaptive loss? --> diverges = doesn't train some parts anymore
+            # loss = torch.tensor(0.0, device=self.device)
+            # for i,(loss_name, loss_func) in enumerate(self.loss.items()):
+            #     app = self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
+            #     loss += self.loss_lambdas[i].detach().clone() * app
+            #     self.loss_lambdas[i] = self.loss_lambdas[i] * app.detach().clone()
+            # self.loss_lambdas = self.loss_lambdas / (self.loss_lambdas.sum()+1e-8)
+            # print(self.loss_lambdas)
+            # self.custom_log(split_name+'_loss', loss)
         else:
             loss = self._compute("loss", self.loss, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
 
@@ -123,20 +136,6 @@ class BaseNN(pl.LightningModule):
     #     # norms = pl.utilities.grad_norm(self.layer, norm_type=2)
     #     # self.log_dict(norms)
     #     # print(norms)
-    
-    #sum of different losses? or left to user?
-    # if sum done by us, we could log each loss separately
-    # if sum done by user, we could only log the total loss
-    # ....
-    # TODO: più loss?
-    # Come are se le loss hanno diversi inputs?
-    # loss_input_from_model_output diventa un dizionario di losses
-    # total_loss = 0
-    # for loss_name, loss_obj in self.losses.items():
-    #     loss = loss_obj(model_output, batch)
-    #     total_loss += loss
-    #     self.custom_log(split_name+'_'+loss_name, loss)
-    # self.custom_log(split_name+'_total_loss', total_loss)
     
     def compute_metrics(self, batch, metrics_input_from_batch, model_output, metrics_input_from_model_output, split_name):
         metric_values = {}
