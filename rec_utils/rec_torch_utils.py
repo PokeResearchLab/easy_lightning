@@ -51,6 +51,12 @@ class DictSequentialDataset(DictDataset):
             print("WARNING: sequential_keys not provided. Using all keys in the data dictionary.")
             sequential_keys = list(data.keys())
 
+        # If lookback and stride are not provided, set them based on the maximum length of values in the data
+        if lookback is None:
+            lookback = max([value.shape[-1] for value in data.values()]) + lookforward + simultaneous_lookforward
+        if stride is None:
+            stride = lookback
+
         # Pad the sequences in the data using specified parameters
         for key in sequential_keys:
             if left_pad:
@@ -59,12 +65,6 @@ class DictSequentialDataset(DictDataset):
             else:
                 x_function = lambda x: x
                 out_func = lambda x: x
-
-            # If lookback and stride are not provided, set them based on the maximum length of values in the data
-            if lookback is None:
-                lookback = max([value.shape[-1] for value in data.values()]) + lookforward + simultaneous_lookforward
-            if stride is None:
-                stride = lookback
 
             needed_length = lookback + lookforward + simultaneous_lookforward
             extra_pad = lambda x : x if needed_length <= x.shape[1] else torch.cat([x, torch.zeros((x.shape[0], needed_length - x.shape[1]),dtype=x.dtype)],dim=1)
@@ -147,8 +147,10 @@ class RecommendationDataloader(DataLoader):
                  relevance=None, 
                  num_negatives=1,
                  padding_value=0,
-                 seed=None,
                  **kwargs):
+        # Call the constructor of the parent class (DataLoader)
+        super().__init__(dataset, **kwargs)
+
         # Initialize basic parameters
         self.num_items = num_items
         # Convert original_sequences to a list of sets for faster lookup
@@ -168,11 +170,6 @@ class RecommendationDataloader(DataLoader):
 
         self.padding_value = padding_value
 
-        self.seed = seed
-
-        # Call the constructor of the parent class (DataLoader)
-        super().__init__(dataset, **kwargs)
-
     # Method to sample negative items for a given set of indices
     def sample_negatives(self, indices, t=1):
         #TODO! if len(possible_negatives) < num_negatives*t, sample with replacement!
@@ -190,7 +187,6 @@ class RecommendationDataloader(DataLoader):
 
     # Custom iterator method to yield batches with additional information
     def __iter__(self):
-        if self.seed is not None: torch.manual_seed(self.seed)
         for out in super().__iter__():
             # Add negative samples and relevance scores to the batch
             out["relevance"] = self.relevance_function(out)
@@ -320,7 +316,7 @@ def prepare_rec_data_loaders(datasets, data,
     
 def create_rec_model(name, seed=42, **model_params):
     # Set a random seed for weight initialization
-    pl.seed_everything(seed, workers=True)
+    pl.seed_everything(seed)
     # Get the model from the model module
     return getattr(model, name)(**model_params)
         

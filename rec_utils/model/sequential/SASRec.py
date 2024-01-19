@@ -92,9 +92,7 @@ class SASRec(torch.nn.Module):
 
         return log_feats
     
-    def forward(self, input_seqs, poss_item_seqs, uid):
-        print("uid:", uid)
-
+    def forward(self, input_seqs, poss_item_seqs):
         log_feats = self.log2feats(input_seqs).unsqueeze(2)
         # unsqueeze(2) to make it (B, T, 1, E) for broadcasting with poss_item_embs (B, T, I, E)
 
