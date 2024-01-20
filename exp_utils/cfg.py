@@ -384,6 +384,23 @@ def raise_globals(cfg, new_cfg):
     
     return cfg
 
+def move_nosave(cfg, new_cfg, key, new_key):
+    """
+    Move nosave keys from new_cfg to cfg.
+
+    :param cfg: The target configuration object to merge nosave keys into.
+    :param new_cfg: The source configuration object to extract nosave keys from.
+    :param key: The key used to prefix the moved nosave keys.
+    :return: The updated target configuration object.
+    """
+    
+    if experiment_nosave_key in new_cfg:
+        # Add new_key to the nosave keys from new_cfg
+        cfg[experiment_nosave_key] = cfg.get(experiment_nosave_key, []) + [new_key]
+        # Remove key from the nosave keys from new_cfg
+        new_cfg[experiment_nosave_key].remove(key)
+    
+    return cfg
 
 def raise_nosave(cfg, new_cfg, key):
     """
@@ -454,6 +471,10 @@ def raise_keys(cfg, new_cfg):
             cfg[new_key] = value
             # Add the key to the set of keys to remove from new_cfg
             to_pop.add(key)
+
+            # Check if key was in nosave keys, and raise it too
+            if key in new_cfg.get(experiment_nosave_key,[]):
+                move_nosave(cfg, new_cfg, key, new_key)
     
     # Remove the keys from new_cfg
     for key in to_pop:
