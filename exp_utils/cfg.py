@@ -842,6 +842,20 @@ class ConfigObject(dict):
         for values in zip_longest(*[self.sweep(relative_key) for relative_key in relative_keys]):
             yield values
 
+    def sweep_safe(self, relative_key):
+        """
+        Iterate through and yield values of a list-like key in the configuration.
+        If not list-like, yield the value as is.
+
+        :param relative_key: The relative key to access and sweep through.
+        :yield: Each value associated with the relative key.
+        """
+
+        if isinstance(self[relative_key], (list, tuple)):
+            yield from self.sweep(relative_key)
+        else:
+            yield self[relative_key]
+
     def sweep_additions(self, relative_key, config_path="../cfg"):
         """
         Iterate through and yield values of a list-like key with additional configurations.
