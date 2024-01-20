@@ -468,7 +468,9 @@ def raise_keys(cfg, new_cfg):
             # Clean the key by removing yaml_raise_char
             new_key = clean_key(key, yaml_raise_char)
             # Assign the value to the cleaned key in cfg
-            cfg[new_key] = value
+            # If the key is already present, merge the values
+            cfg = merge_dicts(cfg,{new_key: value}, preference=1)
+            
             # Add the key to the set of keys to remove from new_cfg
             to_pop.add(key)
 
