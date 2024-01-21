@@ -1,6 +1,8 @@
 # Import necessary libraries
 import torch
 import pytorch_lightning as pl
+import os
+import csv
 #NCODLoss has manual optmization as written here https://lightning.ai/docs/pytorch/stable/model/manual_optimization.html# according
 #to the paper https://github.com/RSTLess-research/NCOD-Learning-with-noisy-labels/tree/main
 
@@ -160,7 +162,15 @@ class BaseNN(pl.LightningModule):
 
         if isinstance(value, dict):
             for key in value:
-                self.custom_log(split_name+'_'+name+'_'+key, value[key])
+                log_key = split_name+'_'+name+'_'+key
+                to_log = value[key]
+                if to_log.size() != 1 and len(to_log.size()) != 0:
+                    if split_name == "test":
+                        save_path = os.path.join(self.logger.save_dir, self.logger.name, f'version_{self.logger.version}',f"metrics_per_sample.csv")
+                        with open(save_path, 'a') as f_object:
+                            writer_object = csv.writer(f_object)
+                            writer_object.writerow([log_key,*to_log.cpu().detach().tolist()])
+                            f_object.close()
         else:
             self.custom_log(split_name+'_'+name, value)
 
