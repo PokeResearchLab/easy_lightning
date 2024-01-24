@@ -25,7 +25,7 @@ def load_data(source="local", custom_data_functions=[], merge_before_split=False
 
     # If 'custom_data_functions' is provided, call each 'custom_data_functions' function to modify the 'data' object.
     for custom_function_dict in custom_data_functions:
-            data = custom_function_dict["function"](data, **custom_function_dict["kwargs"])
+        data = custom_function_dict["function"](data, **custom_function_dict["kwargs"])
 
     # If 'merge_before_split' is True, call the 'merge_splits' function to merge the data before splitting.
     #TODO? do not use boolean to decide but other parameter
@@ -47,6 +47,15 @@ def load_data(source="local", custom_data_functions=[], merge_before_split=False
     if data_scaler is None:
         return data
     return data, data_scaler
+
+def simple_load_data(source="local", **kwargs):
+    # Call the 'select_dataloader' function to determine the appropriate data loader based on the 'source' parameter.
+    dataloader = select_dataloader(source)
+
+    # Call the selected data loader to obtain the 'data' object using any provided keyword arguments (**kwargs).
+    data = dataloader(**kwargs)
+
+    return data
 
 def select_dataloader(source):
     """
