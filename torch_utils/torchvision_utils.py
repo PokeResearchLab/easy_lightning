@@ -23,8 +23,9 @@ def get_torchvision_model(name, torchvision_params={}, in_channels=None, out_fea
     - module: The modified TorchVision model.
     """
     # Create the base TorchVision model
-    module = get_torchvision_model_split_name(name)(**torchvision_params)
-    
+    # module = get_torchvision_model_split_name(name)(**torchvision_params)
+    module = torchvision.models.get_model(name, **torchvision_params)
+
     # Modify the model if in_channels is specified
     if in_channels is not None:
         change_in_channels(name, module, in_channels)

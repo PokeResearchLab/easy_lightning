@@ -155,14 +155,15 @@ def prepare_loss(loss_info, additional_module=None, seed=42):
     elif isinstance(loss_info, dict):
         # If 'loss' is a dictionary, assume it contains loss name and parameters
         loss = {}
-        for loss_name, loss_params in loss_info.items():
-            loss[loss_name] = get_single_loss(loss_params["name"], loss_params.get("params",{}), additional_module)
+        for loss_name, loss_params in sorted(loss_info.items()):
+            if loss_name != "__weight__":
+                loss[loss_name] = get_single_loss(loss_params["name"], loss_params.get("params",{}), additional_module)
         loss = torch.nn.ModuleDict(loss)
+        loss.__weight__ = loss_info.get("__weight__", torch.ones(len(loss)))
     else:
         raise NotImplementedError
-    
     return loss
-    
+
 def get_single_loss(loss_name, loss_params, additional_module=None):
     # Check if the loss_name exists in torch.nn or custom_losses
     if hasattr(additional_module, loss_name):

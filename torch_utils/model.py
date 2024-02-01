@@ -109,9 +109,9 @@ class BaseNN(pl.LightningModule):
     def compute_loss(self, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name):
         if isinstance(self.loss, torch.nn.ModuleDict):
             loss = torch.tensor(0.0, device=self.device)
-            for loss_name, loss_func in self.loss.items():
+            for i, (loss_name, loss_func) in enumerate(self.loss.items()):
                 # TODO: WEIGHT LOSS
-                loss += self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
+                loss += self.loss.__weight__[i]*self._compute(loss_name, loss_func, batch, loss_input_from_batch, model_output, loss_input_from_model_output, split_name)
             self.custom_log(split_name+'_loss', loss)
 
             # TODO: adaptive loss? --> diverges = doesn't train some parts anymore
@@ -171,6 +171,8 @@ class BaseNN(pl.LightningModule):
                             writer_object = csv.writer(f_object)
                             writer_object.writerow([log_key,*to_log.cpu().detach().tolist()])
                             f_object.close()
+                else:
+                    self.custom_log(log_key, to_log)
         else:
             self.custom_log(split_name+'_'+name, value)
 
