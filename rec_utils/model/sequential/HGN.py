@@ -1,81 +1,54 @@
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 
-
-class HGN(nn.Module):   #TODO CHECK FEDE
-    def __init__(self, L, dims, num_items, num_users, **kwargs):
+class HGN(torch.nn.Module):
+    def __init__(self, lookback, emb_size, num_items, num_users, **kwargs):
         super(HGN, self).__init__()
 
-        #L = 200
-        # user and item embeddings
-        self.user_embeddings = nn.Embedding(num_users, dims)#.to(next(self.parameters()).device)
-        self.item_embeddings = nn.Embedding(num_items, dims)#.to(next(self.parameters()).device)
-        
+        self.user_embeddings = torch.nn.Embedding(num_users+1, emb_size) #+1 because of padding
+        self.in_item_embeddings = torch.nn.Embedding(num_items+1, emb_size, padding_idx=0) #+1 because of padding
 
-        self.feature_gate_item = nn.Linear(dims, dims)#.to(next(self.parameters()).device)
-        self.feature_gate_user = nn.Linear(dims, dims)#.to(next(self.parameters()).device)
+        self.feature_gate_item = torch.nn.Linear(emb_size, emb_size, bias=False)
+        self.feature_gate_user = torch.nn.Linear(emb_size, emb_size)
 
-        self.instance_gate_item = Variable(torch.zeros(dims, 1).type(torch.FloatTensor), requires_grad=True)#.to(next(self.parameters()).device)
-        self.instance_gate_user = Variable(torch.zeros(dims, L).type(torch.FloatTensor), requires_grad=True)#.to(next(self.parameters()).device)
-        self.instance_gate_item = torch.nn.init.xavier_uniform_(self.instance_gate_item)
-        self.instance_gate_user = torch.nn.init.xavier_uniform_(self.instance_gate_user)
+        self.instance_gate_item = torch.nn.Linear(emb_size, 1, bias=False)
+        self.instance_gate_user = torch.nn.Linear(emb_size, lookback, bias=False)
 
-        self.W2 = nn.Embedding(num_items+1, dims, padding_idx=0)#.to(next(self.parameters()).device)
-        self.b2 = nn.Embedding(num_items+1, 1, padding_idx=0)#.to(next(self.parameters()).device)
+        self.out_item_embeddings = torch.nn.Embedding(num_items+1, emb_size, padding_idx=0) #+1 because of padding
 
-        #print("PIPPO", self.b2.device)
-        # # weight initialization
-        # self.user_embeddings.weight.data.normal_(0, 1.0 / self.user_embeddings.embedding_dim)
-        # self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
-        # self.W2.weight.data.normal_(0, 1.0 / self.W2.embedding_dim)
-        # self.b2.weight.data.zero_()
-
-    def forward(self, item_seq, items_to_predict, user_ids, for_pred=False):
-        item_embs = self.item_embeddings(item_seq)
+    def forward(self, item_seq, items_to_predict, user_ids):
+        in_item_embs = self.in_item_embeddings(item_seq)
         user_emb = self.user_embeddings(user_ids)
 
         # feature gating
-        gate = torch.sigmoid(self.feature_gate_item(item_embs) + self.feature_gate_user(user_emb).unsqueeze(1))
-        gated_item = item_embs * gate
+        gated_item = in_item_embs * torch.sigmoid(self.feature_gate_item(in_item_embs) + self.feature_gate_user(user_emb).unsqueeze(1))
 
-
-        print(gated_item.shape, self.instance_gate_item.shape, user_emb.shape, self.instance_gate_user.shape)
         # instance gating
-        instance_score = torch.sigmoid(torch.matmul(gated_item, self.instance_gate_item.unsqueeze(0)).squeeze() +
-                                       user_emb.mm(self.instance_gate_user))
-        union_out = gated_item * instance_score.unsqueeze(2)
-        union_out = torch.sum(union_out, dim=1)
-        union_out = union_out / torch.sum(instance_score, dim=1).unsqueeze(1)
+        union_out = gated_item * torch.sigmoid(self.instance_gate_item(gated_item) + self.instance_gate_user(user_emb).unsqueeze(-1))
+        #union_out = union_out.cumsum(dim=1) / torch.arange(1, union_out.shape[1]+1, device=union_out.device).unsqueeze(0).unsqueeze(-1) #average over time
+        union_out = union_out.mean(dim=1, keepdim=True)
 
-        w2 = self.W2(items_to_predict)
-        b2 = self.b2(items_to_predict)
+        out_item_embs = self.out_item_embeddings(items_to_predict) #torch.Size([B, T, P, H])
 
-        if for_pred:
-            w2 = w2.squeeze()
-            b2 = b2.squeeze()
+        user_emb = user_emb.unsqueeze(1).unsqueeze(2) #---> torch.Size([B, 1, 1, H])
+        union_out = union_out.unsqueeze(2) #---> torch.Size([B, L, 1, H])
+        in_item_embs = in_item_embs.unsqueeze(2) #---> torch.Size([B, L, 1, H])
+        
+        timesteps_to_use = min(items_to_predict.shape[1], union_out.shape[1])
 
-            # MF
-            res = user_emb.mm(w2.t()) + b2
+        union_out = union_out[:, -timesteps_to_use:]
+        out_item_embs = out_item_embs[:, -timesteps_to_use:]
 
-            # union-level
-            res += union_out.mm(w2.t())
+        # user-level
+        scores = (out_item_embs * user_emb).sum(dim=-1)
 
-            # item-item product
-            rel_score = torch.matmul(item_embs, w2.t().unsqueeze(0))
-            rel_score = torch.sum(rel_score, dim=1)
-            res += rel_score
-        else:
-            # MF
-            res = torch.baddbmm(b2, w2, user_emb.unsqueeze(2)).squeeze()
+        # union-level
+        scores += (out_item_embs * union_out).sum(dim=-1)
 
-            # union-level
-            res += torch.bmm(union_out.unsqueeze(1), w2.permute(0, 2, 1)).squeeze()
-
-            # item-item product
-            rel_score = item_embs.bmm(w2.permute(0, 2, 1))
-            rel_score = torch.sum(rel_score, dim=1)
-            res += rel_score
-
-        return res
+        # item-item product
+        # attn = torch.tril(torch.ones(in_item_embs.shape[1],in_item_embs.shape[1], device=out_item_embs.device))[-out_item_embs.shape[1]:].unsqueeze(0).unsqueeze(-1)
+        # res += ((out_item_embs.unsqueeze(2) * in_item_embs.unsqueeze(1)).sum(dim=-1)*attn).sum(dim=2) / attn.sum(2) #average over time
+        
+        # item-item product
+        scores += (out_item_embs.unsqueeze(2) * in_item_embs.unsqueeze(1)).sum(dim=-1).sum(dim=2)
+        
+        return scores

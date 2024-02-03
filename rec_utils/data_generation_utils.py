@@ -36,7 +36,7 @@ def preprocess_dataset(name, data_folder="../data/raw", min_rating=None, min_ite
     data = split_rec_data(data, split_method, split_keys, test_sizes, random_state=random_state, del_after_split=del_after_split, **kwargs)
 
     #TODO: controllare stats
-    #print_stats(complete_set, keep_time)
+    #print_stats(data, True)
     
     # for k,v in dataset.items():
     #     pass #TODO: what did you have in mind?
@@ -68,7 +68,7 @@ def get_rating_files_per_dataset(dataset_name):
     elif dataset_name == "ml-20m":
         return ['ratings.csv']
     elif dataset_name == "steam":
-        return ['australian_user_reviews.csv']
+        return ['steam.csv']
     elif dataset_name == "amazon_beauty":
         return ['All_Beauty.csv']
     elif dataset_name == "amazon_videogames":
@@ -83,6 +83,8 @@ def get_rating_files_per_dataset(dataset_name):
         return ['dataset_TSMC2014_NYC.txt']
     elif dataset_name == "foursquare-tky":
         return ['dataset_TSMC2014_TKY.txt']
+    elif dataset_name == "behance":
+        return ['behance.csv']
     else:
         raise NotImplementedError
 
@@ -91,31 +93,45 @@ def specific_preprocess(dataset_raw_folder, dataset_name):  #TODO filippo check 
     # For the "steam" dataset
     if dataset_name == "steam":
         # File path for the Steam dataset
-        file_path = os.path.join(dataset_raw_folder, 'australian_user_reviews.json')  # IT'S NOT A JSON... (NOR jsonl: single quotes instead of doubles)
+        file_path = os.path.join(dataset_raw_folder, 'steam.json')  # IT'S NOT A JSON... (NOR jsonl: single quotes instead of doubles)
         all_reviews = []
         # Read and process each line in the file
         with open(file_path, "r") as f:
             for line in f:
                 # Convert each line to a dictionary using literal_eval
                 line_dict = literal_eval(line)
-                user_id = line_dict['user_id']
+                user_id = line_dict['username']
                 # Extract relevant information from each review
-                for review_dict in line_dict['reviews']:
-                    item_id = review_dict['item_id']
-                    rating = review_dict['recommend'] * 1
-                    timestamp = review_dict['posted'][7:-1]  # removing "Posted " and "."
-                    try:
-                        # Convert the timestamp to a Unix timestamp
-                        timestamp = datetime.datetime.timestamp(datetime.datetime.strptime(timestamp, "%B %d, %Y"))
-                    except ValueError:
-                        timestamp = -1
-                    timestamp = int(timestamp)
-                    all_reviews.append((user_id, item_id, rating, timestamp))
+                #for review_dict in line_dict['reviews']:
+                item_id = line_dict['product_id']
+                #rating = review_dict['recommend'] * 1
+                rating = 3
+                timestamp = line_dict['date']#[7:-1]  # removing "Posted " and "."
+                try:
+                    # Convert the timestamp to a Unix timestamp
+                    timestamp = datetime.datetime.timestamp(datetime.datetime.strptime(timestamp, "%Y-%m-%d"))
+                except ValueError:
+                    timestamp = -1
+                timestamp = int(timestamp)
+                
+                all_reviews.append((user_id, item_id, rating, timestamp))
 
         # Convert the processed data to a DataFrame and save it as a CSV file
         all_reviews = pd.DataFrame(all_reviews)
-        all_reviews.to_csv(os.path.join(dataset_raw_folder, 'australian_user_reviews.csv'), header=False, index=False)
+        all_reviews.to_csv(os.path.join(dataset_raw_folder, 'steam.csv'), header=False, index=False)
     
+    elif dataset_name == "behance":
+        file_path = os.path.join(dataset_raw_folder, 'behance.txt')  # IT'S NOT A JSON... (NOR jsonl: single quotes instead of doubles)
+        all_reviews = []
+        with open(file_path, "r") as f:
+            for line in f:
+                user_id, item_id, timestamp = line.strip().split(" ")
+                rating = 3
+                timestamp = int(timestamp)
+                all_reviews.append((user_id, item_id, rating, timestamp))
+        all_reviews = pd.DataFrame(all_reviews)
+        all_reviews.to_csv(os.path.join(dataset_raw_folder, 'behance.csv'), header=False, index=False)
+
     # For Amazon datasets
     elif "amazon" in dataset_name:
         # Mapping dataset_name to the original file name
@@ -171,9 +187,11 @@ def load_ratings_df(dataset_raw_folder, dataset_name):
         df = pd.read_csv(file_path, sep=',', header=0, engine="python")
         df.columns = ['uid', 'sid', 'rating', 'timestamp']
         return df
-    elif "amazon" in dataset_name or dataset_name=="steam":
+    elif "amazon" in dataset_name or dataset_name=="steam" or dataset_name=="behance":
         if dataset_name == "steam":
-            orig_file_name = 'australian_user_reviews'
+            orig_file_name = 'steam'
+        elif dataset_name == "behance":
+            orig_file_name = 'behance'
         elif dataset_name == "amazon_beauty":
             orig_file_name = 'All_Beauty'
         elif dataset_name == "amazon_videogames":

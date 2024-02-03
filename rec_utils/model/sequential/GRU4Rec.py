@@ -2,7 +2,7 @@ import torch
 
 class GRU4Rec(torch.nn.Module):
     def __init__(self, num_items, hidden_size, num_layers=1,
-                 dropout_hidden=0, dropout_input=0, embedding_dim=128, **kwargs):
+                 dropout_hidden=0, dropout_input=0, emb_size=128, **kwargs):
         super(GRU4Rec, self).__init__()
 
         self.num_items = num_items
@@ -14,9 +14,9 @@ class GRU4Rec(torch.nn.Module):
 
         self.h2o = torch.nn.Linear(hidden_size, num_items+1)
 
-        self.look_up = torch.nn.Embedding(num_items+1, embedding_dim)
+        self.look_up = torch.nn.Embedding(num_items+1, emb_size)
         
-        self.gru = torch.nn.GRU(embedding_dim, hidden_size, num_layers, dropout=dropout_hidden, batch_first=True)
+        self.gru = torch.nn.GRU(emb_size, hidden_size, num_layers, dropout=dropout_hidden, batch_first=True)
 
     def forward(self, input_seqs, poss_item_seqs):
         '''

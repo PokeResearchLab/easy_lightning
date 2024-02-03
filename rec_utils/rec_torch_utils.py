@@ -42,6 +42,7 @@ class DictSequentialDataset(DictDataset):
                  lookforward=1, 
                  simultaneous_lookforward=1,
                  out_seq_len=None,
+                 keep_last = None,
                  drop_original=True):
         
         self.data = data
@@ -56,6 +57,8 @@ class DictSequentialDataset(DictDataset):
             lookback = max([value.shape[-1] for value in data.values()]) + lookforward + simultaneous_lookforward
         if stride is None:
             stride = lookback
+        if keep_last is None:
+            keep_last = lookback
 
         # Pad the sequences in the data using specified parameters
         for key in sequential_keys:
@@ -72,17 +75,21 @@ class DictSequentialDataset(DictDataset):
             self.data[key] = out_func(extra_pad(self.pad_list_of_tensors(self.data[key], padding_value=padding_value, x_function=x_function)))
 
         # Pair input and output sequences based on specified parameters
-        self.pair_input_output(sequential_keys, padding_value, lookback, stride, lookforward, simultaneous_lookforward, out_seq_len, drop_original)
+        self.pair_input_output(sequential_keys, padding_value, lookback, stride, lookforward, simultaneous_lookforward, out_seq_len, keep_last, drop_original)
 
         # Call the constructor of the parent class (DictDataset)
         super().__init__(self.data)
 
     # Method to pad a list of tensors and return the padded sequence as a tensor
     def pad_list_of_tensors(self, list_of_tensors, padding_value=0, x_function= lambda x: x):
-        return torch.nn.utils.rnn.pad_sequence([torch.tensor(x_function(x)) for x in list_of_tensors], batch_first=True, padding_value=padding_value)
-
+        padded = torch.nn.utils.rnn.pad_sequence([torch.tensor(x_function(x)) for x in list_of_tensors], batch_first=True, padding_value=padding_value)
+        # Change type to type of first non-empy list in list of tensors
+        for x in list_of_tensors:
+            if len(x)>0: break
+        padded = padded.type(getattr(torch,str(type(x[0]).__name__)))
+        return padded
     # Method to pair input and output sequences based on specified parameters
-    def pair_input_output(self, sequential_keys, padding_value, lookback, stride, lookforward, simultaneous_lookforward, out_seq_len, drop_original=True):
+    def pair_input_output(self, sequential_keys, padding_value, lookback, stride, lookforward, simultaneous_lookforward, out_seq_len, keep_last, drop_original=True):
         key_to_use = sequential_keys[0]
         max_len = self.data[key_to_use].shape[1]
         if out_seq_len is None: out_seq_len = max_len
@@ -118,7 +125,7 @@ class DictSequentialDataset(DictDataset):
             # Option 1: keep same shape
             # self.data[f"out_{key}"][:, :-out_seq_len] = padding_value
             # Option 2: shorten array
-            self.data[f"out_{key}"] = self.data[f"out_{key}"][:, -out_seq_len+self.data[f"out_{key}"].shape[-1]-1:]
+            self.data[f"out_{key}"] = self.data[f"out_{key}"][:, max(-keep_last,-out_seq_len+self.data[f"out_{key}"].shape[-1]-1):]
             # Shorten by number of samples reserved to this split, also removing simultaneous_lookforward
 
             # Optional: Squeeze out the last dimension if simultaneous_lookforward is 1
@@ -143,10 +150,12 @@ class RecommendationDataloader(DataLoader):
                  dataset, 
                  original_sequences, 
                  num_items, 
-                 out_key="out_sid", 
+                 primary_key="sid", 
                  relevance=None, 
                  num_negatives=1,
                  padding_value=0,
+                 mask_value = None,
+                 mask_prob = 0,
                  **kwargs):
         # Call the constructor of the parent class (DataLoader)
         super().__init__(dataset, **kwargs)
@@ -155,7 +164,8 @@ class RecommendationDataloader(DataLoader):
         self.num_items = num_items
         # Convert original_sequences to a list of sets for faster lookup
         self.original_sequences = [set(x) for x in original_sequences]
-        self.out_key = out_key
+        self.in_key = f"in_{primary_key}"
+        self.out_key = f"out_{primary_key}"
 
         # Get the shape of the output from the dataset
         for app in dataset:
@@ -170,12 +180,15 @@ class RecommendationDataloader(DataLoader):
 
         self.padding_value = padding_value
 
+        if mask_prob > 0 and mask_value is None:
+            mask_value = num_items
+        self.mask_value = mask_value
+        self.mask_prob = mask_prob
+
     # Method to sample negative items for a given set of indices
     def sample_negatives(self, indices, t=1):
-        #TODO! if len(possible_negatives) < num_negatives*t, sample with replacement!
-        #How? Opz 1: torch.randperm in len(possible_negatives)*ceil(self.num_negatives*t%len(possible_negatives))
-        # Then, when torch.randperm > len(possible_negatives), subtract len(possible_negatives) and repeat
-        # Opz 2: torch.randint(0, len(possible_negatives), (self.num_negatives*t,)), but we can have the same negative item multiple times even if len(possible_negatives) >= num_negatives*t
+        if self.num_negatives == 0:
+            return torch.zeros(len(indices), t, self.num_negatives, dtype=torch.long)
         negatives = torch.zeros(len(indices), self.num_negatives*t, dtype=torch.long)
         for i, index in enumerate(indices):
             # Get possible negative items that are not in the original sequence
@@ -183,7 +196,16 @@ class RecommendationDataloader(DataLoader):
             # Randomly sample num_negatives negative items
             negatives[i] = possible_negatives[torch.randint(0, len(possible_negatives), (self.num_negatives*t,))]
             #negatives[i] = possible_negatives[torch.randperm(len(possible_negatives))[:self.num_negatives*t]]
+        negatives = negatives.reshape(len(indices), t, max(self.num_negatives,1))
         return negatives
+    
+    def mask_input(self, input):
+        if self.mask_prob == 0: return input
+        mask = torch.rand(input.shape) < self.mask_prob
+        mask[:,-1] = True #Always mask last item (for val / test purposes) #TODO: generalize to more testing items
+        input[mask] = self.mask_value
+        return input
+    # TODO: deleting objects?
 
     # Custom iterator method to yield batches with additional information
     def __iter__(self):
@@ -191,8 +213,12 @@ class RecommendationDataloader(DataLoader):
             # Add negative samples and relevance scores to the batch
             out["relevance"] = self.relevance_function(out)
             timesteps = out[self.out_key].shape[1]
-            negatives = self.sample_negatives(out["uid"], timesteps).reshape(-1, timesteps, self.num_negatives)
-            out_is_padding = torch.isclose(out[self.out_key], self.padding_value*torch.ones_like(out[self.out_key])).all(-1) #.all(-1) because out can have multiple values, i.e. simultaneous_lookforward
+            negatives = self.sample_negatives(out["uid"], timesteps)
+            out[self.in_key] = self.mask_input(out[self.in_key])
+            relevant_in = out[self.in_key][:, -out[self.out_key].shape[1]:]
+            not_to_use = torch.isclose(out[self.out_key], self.padding_value*torch.ones_like(out[self.out_key])).all(-1) #.all(-1) for out because out can have multiple values, i.e. simultaneous_lookforward
+            if self.mask_value is not None:
+                not_to_use = torch.logical_or(not_to_use, torch.logical_not(torch.isclose(relevant_in, self.mask_value*torch.ones_like(relevant_in))))
             #negatives[out_is_padding] = self.padding_value # Pad negative if out (i.e. positives) is padding
             
             # Masked tensor are a prototype in torch, but could solve many issues with padding and not wanting to compute losses or metrics on padding
@@ -203,7 +229,7 @@ class RecommendationDataloader(DataLoader):
             #concatenate 0 relevance to relevance
             out["relevance"] = torch.cat([out["relevance"], torch.zeros_like(negatives)], dim=-1)
 
-            out["relevance"][out_is_padding] = float("nan") # Nan relevance if out is padding
+            out["relevance"][not_to_use] = float("nan") # Nan relevance if out is padding
 
             # Yield the modified batch
             yield out
@@ -313,44 +339,8 @@ def prepare_rec_data_loaders(datasets, data,
 
     return loaders
 
-    
 def create_rec_model(name, seed=42, **model_params):
     # Set a random seed for weight initialization
     pl.seed_everything(seed)
     # Get the model from the model module
     return getattr(model, name)(**model_params)
-        
-    
-# def normalize(self, x):
-#         return x/torch.sum(x)
-
-    #num_positives, num_negatives
-    #positives comes from out_{var_name}
-    #negatives?
-    # relevance = None
-    # if relevance is None:
-    #     relevance = torch.ones_like(out_var)
-    # if isinstance(relevance, torch.Tensor):
-    #     relevance = relevance.unsqueeze(-1)
-    # if isinstance(relevance, str):
-    #     relevance = self.convert_relevance(relevance)
-        
-
-# class SequentialDataLoader(DataLoader):
-#     def __init__(self, data, **kwargs):
-#         super().__init__(data, **kwargs)
-
-
-#TODO: EMISSION TRACKER
-# from lightning.pytorch.callbacks import Callback
-
-# class EmissionsTrackerCallback(Callback):
-#     def __init__(self, **tracker_params):
-#         super().__init__()
-#         self.tracker = EmissionsTracker(**tracker_params)
-#     def on_train_start(self, trainer, pl_module):
-#         self.tracker.start()
-#     def on_train_end(self, trainer, pl_module):
-#         self.tracker.end()
-#         pl_module.log...
-        

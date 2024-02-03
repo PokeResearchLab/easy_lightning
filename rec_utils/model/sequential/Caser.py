@@ -1,16 +1,8 @@
 
 
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-#from utils import activation_getter
-
-
-activation_getter = {'iden': lambda x: x, 'relu': F.relu, 'tanh': torch.tanh, 'sigm': torch.sigmoid}
-
-
-class Caser(nn.Module):     #TODO check fede, why there is never .todevice?
+class Caser(torch.nn.Module):
     """
     Convolutional Sequence Embedding Recommendation Model (Caser)[1].
 
@@ -27,108 +19,69 @@ class Caser(nn.Module):     #TODO check fede, why there is never .todevice?
         Model-related arguments, like latent dimensions.
     """
 
-    def __init__(self, L, dims, num_hor, num_ver, drop_rate, ac_conv, ac_fc, num_items, num_users, *args, **kwargs):
-        super(Caser, self).__init__()
+    def __init__(self, lookback, emb_size, num_hor_filters, num_ver_filters, drop_rate, act_conv, act_fc, num_items, num_users, *args, **kwargs):
+        super().__init__()
 
-        # init args
-        self.num_hor = num_hor
-        self.num_ver = num_ver
-        self.drop_ratio = drop_rate
-        self.ac_conv = activation_getter[ac_conv]   #activation function for convolution layer (i.e., phi_c in paper)
-        self.ac_fc = activation_getter[ac_fc]       #activation function for fully-connected layer (i.e., phi_a in paper)
+        # activation functions
+        self.act_conv = getattr(torch.nn,act_conv)() #activation function for convolution layer (i.e., phi_c in paper)
+        self.act_fc = getattr(torch.nn,act_fc)() #activation function for fully-connected layer (i.e., phi_a in paper)
 
         # user and item embeddings
-        self.user_embeddings = nn.Embedding(num_users+1, dims)
-        self.item_embeddings = nn.Embedding(num_items +1, dims)
+        self.user_embeddings = torch.nn.Embedding(num_users+1, emb_size)
+        self.item_embeddings = torch.nn.Embedding(num_items +1, emb_size)
 
         # vertical conv layer
-        self.conv_v = nn.Conv2d(1, self.num_ver, (L, 1))
-
+        self.conv_v = torch.nn.Conv2d(1, num_ver_filters, (lookback, 1))
+            
         # horizontal conv layer
-        lengths = [i + 1 for i in range(L)]
-        self.conv_h = nn.ModuleList([nn.Conv2d(1, self.num_hor, (i, dims)) for i in lengths])
+        self.conv_h = torch.nn.ModuleList([torch.nn.Conv2d(1, num_hor_filters, (i+1, emb_size)) for i in range(lookback)])
+
+        self.num_hor_filters = num_hor_filters
 
         # fully-connected layer
-        self.fc1_dim_v = self.num_ver * dims
-        self.fc1_dim_h = self.num_hor * len(lengths)
+        self.fc1_dim_v = num_ver_filters * emb_size
+        self.fc1_dim_h = num_hor_filters * lookback
         fc1_dim_in = self.fc1_dim_v + self.fc1_dim_h
-        # W1, b1 can be encoded with nn.Linear
-        self.fc1 = nn.Linear(fc1_dim_in, dims)
-        # W2, b2 are encoded with nn.Embedding, as we don't need to compute scores for all items
-        self.W2 = nn.Embedding(num_items, dims+dims)
-        self.b2 = nn.Embedding(num_items, 1)
+        # W1, b1 can be encoded with torch.nn.Linear
+        self.fc1 = torch.nn.Linear(fc1_dim_in, emb_size)
+        # W2, b2 are encoded with torch.nn.Embedding, as we don't need to compute scores for all items
+        self.W2 = torch.nn.Embedding(num_items+1, emb_size+emb_size)
+        self.b2 = torch.nn.Embedding(num_items+1, 1)
 
-        # dropout
-        self.dropout = nn.Dropout(self.drop_ratio)
+        self.dropout = torch.nn.Dropout(drop_rate)
 
-        # weight initialization
-        # self.user_embeddings.weight.data.normal_(0, 1.0 / self.user_embeddings.embedding_dim)
-        # self.item_embeddings.weight.data.normal_(0, 1.0 / self.item_embeddings.embedding_dim)
-        # self.W2.weight.data.normal_(0, 1.0 / self.W2.embedding_dim)
-        # self.b2.weight.data.zero_()
-
-
-    def forward(self, input_seqs, poss_item_seqs):#, item_var, for_pred=False):
-        """
-        The forward propagation used to get recommendation scores, given
-        triplet (user, sequence, targets).
-
-        Parameters
-        ----------
-
-        input_seqs: torch.FloatTensor with size [batch_size, max_sequence_length]
-            a batch of sequence
-        user_var: torch.LongTensor with size [batch_size]
-            a batch of user
-        item_var: torch.LongTensor with size [batch_size]
-            a batch of items
-        for_pred: boolean, optional
-            Train or Prediction. Set to True when evaluation.
-        """
-
+    def forward(self, input_seqs, poss_item_seqs, user_var):#, item_var, for_pred=False):
         # Embedding Look-up
-        print("input seqs", input_seqs)
-        print(aaaa)
-        item_embs = self.item_embeddings(input_seqs).unsqueeze(1)  # use unsqueeze() to get 4-D
+        item_embs = self.item_embeddings(input_seqs).unsqueeze(1) #To get channel dimension for convolution
+        user_emb = self.user_embeddings(user_var)
 
-       # user_emb = self.user_embeddings(user_var).squeeze(1)
-        #user_emb WITHOUT the user_var
-    
+        # Vertical conv layer
+        out_v = self.conv_v(item_embs).view(-1, self.fc1_dim_v)
 
-
-        # Convolutional Layers
-        out, out_h, out_v = None, None, None
-        # vertical conv layer
-        if self.num_ver:
-            out_v = self.conv_v(item_embs)
-            out_v = out_v.view(-1, self.fc1_dim_v)  # prepare for fully connect
-
-        # horizontal conv layer
-        out_hs = list()
-        if self.num_hor:
-            for conv in self.conv_h:
-                conv_out = self.ac_conv(conv(item_embs).squeeze(3))
-                pool_out = F.max_pool1d(conv_out, conv_out.size(2)).squeeze(2)
-                out_hs.append(pool_out)
-            out_h = torch.cat(out_hs, 1)  # prepare for fully connect
-
+        # Horizontal conv layer
+        out_hs = torch.empty((len(self.conv_h),item_embs.shape[0],self.num_hor_filters,1), device=item_embs.device)
+        for i,conv in enumerate(self.conv_h):
+            conv_out = self.act_conv(conv(item_embs))
+            out_hs[i] = conv_out.max(2).values#torch.Size([128, 2, 1])
+        out_h = out_hs.permute(1,0,2,3).reshape(item_embs.shape[0],self.fc1_dim_h)
         # Fully-connected Layers
         out = torch.cat([out_v, out_h], 1)
-        # apply dropout
-        out = self.dropout(out)
+        
+        out = self.dropout(out) # apply dropout
 
         # fully-connected layer
-        z = self.ac_fc(self.fc1(out))
-        x = torch.cat([z, user_emb], 1)
+        z = self.act_fc(self.fc1(out)) # embedding sequenza di item
+        x = torch.cat([z, user_emb], -1).unsqueeze(1).unsqueeze(2) # embedding sequenza di item + embedding utente
 
         w2 = self.W2(poss_item_seqs)
         b2 = self.b2(poss_item_seqs)
 
-        # if for_pred:
-        #     w2 = w2.squeeze()
-        #     b2 = b2.squeeze()
-        #     res = (x * w2).sum(1) + b2
-        # else:
-        #     res = torch.baddbmm(b2, w2, x.unsqueeze(2)).squeeze()
+        timesteps_to_use = min(poss_item_seqs.shape[1], x.shape[1])
 
-        return x
+        poss_item_seqs = poss_item_seqs[:, -timesteps_to_use:]
+
+        x = x[:, -timesteps_to_use:, :, :] # (B, T, 1, E)
+
+        res = (w2 * x).sum(dim=-1) + b2.squeeze(-1)
+
+        return res

@@ -6,6 +6,8 @@ from .sequential.GRU4Rec import GRU4Rec
 # from NextItNet import NextItNet
 # from NRMS import NRMS
 from .sequential.SASRec import SASRec
+from .sequential.BERT4Rec import BERT4Rec
+from .sequential.NARM import NARM
 # from S3Rec import S3Rec
 #TODO: trovare metodo più intelligente imports
 
