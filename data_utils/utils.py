@@ -151,6 +151,25 @@ def min_max_scale(data, scale_dict={"x": (0,255)}, **kwargs):
         data[key] = (data[key] - scale_range[0]) / (scale_range[1] - scale_range[0])
     return data
 
+def mean_std_scale(data, scale_dict={"x": [0,1]}, **kwargs):
+    """
+    Scales specified variables to a specified range.
+
+    Args:
+        data (dict): A dictionary containing data arrays.
+        scale_dict (dict): A dictionary mapping variables to scale ranges.
+
+    Returns:
+        dict: A dictionary containing the scaled data arrays.
+    """
+    for key, scale_range in scale_dict.items():
+        while(len(scale_range[0].shape) < len(data[key].shape)):
+            scale_range[0] = np.expand_dims(scale_range[0], axis=-1)
+        while(len(scale_range[1].shape) < len(data[key].shape)):
+            scale_range[1] = np.expand_dims(scale_range[1], axis=-1)
+        data[key] = (data[key] - scale_range[0]) / scale_range[1]
+    return data
+
 def merge_data(data_list, ext):
     """
     Merge data from multiple files into a single dictionary.

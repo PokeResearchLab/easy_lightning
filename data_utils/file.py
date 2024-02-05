@@ -2,7 +2,7 @@ import numpy as np  # Import the 'numpy' library as 'np'.
 import pandas as pd  # Import the 'pandas' library as 'pd'.
 import imageio  # Import the 'imageio' library.
 
-def load_csv(filename, loader_params, load_using_pandas=False, **kwargs):
+def load_csv(filename, loader_params, **kwargs):
     """
     Load data from a CSV file.
 
@@ -12,8 +12,8 @@ def load_csv(filename, loader_params, load_using_pandas=False, **kwargs):
     :param kwargs: Additional keyword arguments for data loading.
     :return: Loaded data as a NumPy array or Pandas DataFrame.
     """
-    if load_using_pandas:
-        load_data = pd.read_csv(filename, **loader_params)  # Load data using Pandas.
+    if loader_params.get("load_using_pandas", False):
+        load_data = pd.read_csv(filename, **{k: v for k, v in loader_params.items() if k != "load_using_pandas"})
     else:
         load_data = np.genfromtxt(filename, **loader_params)  # Load data using NumPy.
     return load_data
