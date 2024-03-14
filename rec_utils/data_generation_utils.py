@@ -13,7 +13,38 @@ from scipy import stats
 from data_utils.data import split_data
 
 
-def preprocess_dataset(name, data_folder="../data/raw", min_rating=None, min_items_per_user=0, min_users_per_item=0, densify_index = True, split_method="leave_n_out", split_keys={"sid":["train_sid","val_sid","test_sid"],"timestamp":["train_timestamp","val_timestamp","test_timestamp"],"rating":["train_rating","val_rating","test_rating"]}, test_sizes=[1,1], random_state=None, del_after_split=True, **kwargs):
+def preprocess_dataset(name, 
+                       data_folder="../data/raw", 
+                       min_rating=None, 
+                       min_items_per_user=0, 
+                       min_users_per_item=0, 
+                       densify_index = True, 
+                       split_method="leave_n_out", 
+                       split_keys={"sid":["train_sid","val_sid","test_sid"],"timestamp":["train_timestamp","val_timestamp","test_timestamp"],"rating":["train_rating","val_rating","test_rating"]}, 
+                       test_sizes=[1,1], 
+                       random_state=None, 
+                       del_after_split=True, 
+                       **kwargs):
+    '''
+    Preprocesses the dataset.
+
+    Args:
+        name (str): Name of the dataset.
+        data_folder (str, optional): Path to the dataset folder. Defaults to "../data/raw".
+        min_rating (float, optional): Minimum rating value to filter the dataset. Defaults to None.
+        min_items_per_user (int, optional): Minimum number of items per user to keep. Defaults to 0.
+        min_users_per_item (int, optional): Minimum number of users per item to keep. Defaults to 0.
+        densify_index (bool, optional): Whether to densify the index. Defaults to True.
+        split_method (str, optional): Splitting method for train/validation/test. Defaults to "leave_n_out".
+        split_keys (dict, optional): Dictionary specifying the keys to split and their corresponding new keys. Defaults to {"sid":["train_sid","val_sid","test_sid"],"timestamp":["train_timestamp","val_timestamp","test_timestamp"],"rating":["train_rating","val_rating","test_rating"]}.
+        test_sizes (list, optional): List of test set sizes for each split key. Defaults to [1,1].
+        random_state (int, optional): Seed for random number generation. Defaults to None.
+        del_after_split (bool, optional): Whether to delete the original split key from the data. Defaults to True.
+
+    Returns:
+        Tuple: Preprocessed data and mapping information.
+    '''
+    
     #TODO: variable split dataset? OR move train-test split to basic data_utils?
     # if split_method=="leave_n_out" and min_items_per_user<np.sum(test_sizes):
     #     raise ValueError('Need at least 3+test_num_samples ratings per user for input, train, validation and test: min_items_per_user --> 3+test_num_samples')
@@ -51,6 +82,13 @@ def preprocess_dataset(name, data_folder="../data/raw", min_rating=None, min_ite
 
 
 def maybe_preprocess_raw_dataset(dataset_raw_folder, dataset_name):
+    '''
+    Checks if the raw dataset exists and preprocesses it if necessary.
+
+    Args:
+        dataset_raw_folder (str): Path to the raw dataset folder.
+        dataset_name (str): Name of the dataset.
+    '''
     print(os.path.isdir(dataset_raw_folder), all(os.path.isfile(os.path.join(dataset_raw_folder,filename)) for filename in get_rating_files_per_dataset(dataset_name)))
     print(dataset_raw_folder, dataset_name)
     if os.path.isdir(dataset_raw_folder) and all(os.path.isfile(os.path.join(dataset_raw_folder,filename)) for filename in get_rating_files_per_dataset(dataset_name)):
@@ -61,6 +99,15 @@ def maybe_preprocess_raw_dataset(dataset_raw_folder, dataset_name):
 
 
 def get_rating_files_per_dataset(dataset_name):
+    '''
+    Returns a list of rating files corresponding to the given dataset name.
+
+    Args:
+        dataset_name (str): Name of the dataset.
+
+    Returns:
+        List: List of rating files.
+    '''
     if dataset_name == "ml-1m":
         return ['ratings.dat']
     elif dataset_name == "ml-100k":
@@ -89,7 +136,16 @@ def get_rating_files_per_dataset(dataset_name):
         raise NotImplementedError
 
 
-def specific_preprocess(dataset_raw_folder, dataset_name):  #TODO filippo check the code for ML-20M, Gowalla
+def specific_preprocess(dataset_raw_folder, dataset_name): 
+    '''
+    Performs dataset-specific preprocessing.
+
+    Args:
+        dataset_raw_folder (str): Path to the raw dataset folder.
+        dataset_name (str): Name of the dataset.
+    '''
+    
+     #TODO filippo check the code for ML-20M, Gowalla
     # For the "steam" dataset
     if dataset_name == "steam":
         # File path for the Steam dataset
@@ -105,7 +161,7 @@ def specific_preprocess(dataset_raw_folder, dataset_name):  #TODO filippo check 
                 #for review_dict in line_dict['reviews']:
                 item_id = line_dict['product_id']
                 #rating = review_dict['recommend'] * 1
-                rating = 3
+                rating = 3  #TODO: check if it's correct
                 timestamp = line_dict['date']#[7:-1]  # removing "Posted " and "."
                 try:
                     # Convert the timestamp to a Unix timestamp
@@ -126,7 +182,7 @@ def specific_preprocess(dataset_raw_folder, dataset_name):  #TODO filippo check 
         with open(file_path, "r") as f:
             for line in f:
                 user_id, item_id, timestamp = line.strip().split(" ")
-                rating = 3
+                rating = 3 #TODO: check if it's correct
                 timestamp = int(timestamp)
                 all_reviews.append((user_id, item_id, rating, timestamp))
         all_reviews = pd.DataFrame(all_reviews)
@@ -172,6 +228,17 @@ def specific_preprocess(dataset_raw_folder, dataset_name):  #TODO filippo check 
 
 
 def load_ratings_df(dataset_raw_folder, dataset_name):
+    '''
+    Loads the ratings DataFrame from the dataset.
+
+    Args:
+        dataset_raw_folder (str): Path to the raw dataset folder.
+        dataset_name (str): Name of the dataset.
+
+    Returns:
+        pd.DataFrame: Ratings DataFrame.
+    '''
+
     if dataset_name == "ml-1m":
         file_path = os.path.join(dataset_raw_folder,'ratings.dat')
         df = pd.read_csv(file_path, sep='::', header=None, engine="python")
@@ -224,6 +291,16 @@ def load_ratings_df(dataset_raw_folder, dataset_name):
 #implicit = don't use ratings
 #explicit = keep ratings
 def filter_ratings(df, min_rating):
+    '''
+    Filters ratings DataFrame based on the minimum rating.
+
+    Args:
+        df (pd.DataFrame): Ratings DataFrame.
+        min_rating (float): Minimum rating value.
+
+    Returns:
+        pd.DataFrame: Filtered ratings DataFrame.
+    '''
     if min_rating is not None:
         #df['rating'] = pd.to_numeric(df['rating'], errors='coerce')
         df = df[df['rating'] >= min_rating]
@@ -231,6 +308,17 @@ def filter_ratings(df, min_rating):
 
 
 def filter_by_frequence(df, min_items_per_user, min_users_per_item):
+    '''
+    Filters DataFrame based on minimum items per user and minimum users per item.
+
+    Args:
+        df (pd.DataFrame): DataFrame.
+        min_items_per_user (int): Minimum number of items per user.
+        min_users_per_item (int): Minimum number of users per item.
+
+    Returns:
+        pd.DataFrame: Filtered DataFrame.
+    '''
     if min_users_per_item > 0:
         print('Filtering by minimum number of users per item:',min_users_per_item)
         item_sizes = df.groupby('sid').size()
@@ -247,6 +335,19 @@ def filter_by_frequence(df, min_items_per_user, min_users_per_item):
 
 
 def densify_index_method(df, vars=["uid", "sid"]):
+    '''
+    Densifies index in the DataFrame.
+
+    Args:
+        df (pd.DataFrame): DataFrame.
+        vars (list): List of variables.
+
+    Returns:
+        pd.DataFrame: DataFrame with densified index.
+        dict: Mapping between original and densified values.
+    '''
+
+
     # Print a message indicating that the index densification process is starting
     print('Densifying index')
 
@@ -267,6 +368,21 @@ def densify_index_method(df, vars=["uid", "sid"]):
 
 
 def df_to_sequences(df, keep_vars=["uid"], seq_vars=["sid", "rating", "timestamp"], user_var="uid", time_var="timestamp"):
+    '''
+    Converts DataFrame to sequences.
+
+    Args:
+        df (pd.DataFrame): DataFrame.
+        keep_vars (list): Variables to keep.
+        seq_vars (list): Variables to be included in sequences.
+        user_var (str): User variable.
+        time_var (str): Timestamp variable.
+
+    Returns:
+        dict: Dictionary of sequences.
+    '''
+
+
     df_group_by_user = df.groupby(user_var)
 
     data = {}
@@ -279,7 +395,7 @@ def df_to_sequences(df, keep_vars=["uid"], seq_vars=["sid", "rating", "timestamp
 
     return data
 
-def print_stats(complete_set,keep_time):
+def print_stats(complete_set,keep_time):  #TODO CHECK WE DONT DO IT HERE BUT IN THE .IPYNB
     print("NUM USERS:",len(complete_set))
 
     if keep_time:
@@ -303,6 +419,19 @@ def print_stats(complete_set,keep_time):
         print("NUM INTERACTIONS:",np.sum([len(seq) for u,seq in complete_set.items()]))
 
 def split_rec_data(data, split_method, split_keys, test_sizes, **kwargs):
+    '''
+    Splits the dataset based on the specified split method and keys.
+
+    Args:
+        data (dict): Input dataset.
+        split_method (str): Splitting method.
+        split_keys (dict): Splitting keys.
+        test_sizes (list): Sizes of the test sets.
+        kwargs: Additional arguments.
+
+    Returns:
+        dict: Split dataset.
+    '''
     print('Splitting:',split_method)
     if split_method == 'leave_n_out':
         for orig_key,new_keys in split_keys.items(): #TODO? float test_sizes
@@ -327,7 +456,7 @@ def split_rec_data(data, split_method, split_keys, test_sizes, **kwargs):
 
 
 # GRAPH
-def transform_to_graph(data, keys=["uid", "sid"], max_ids=None):
+def transform_to_graph(data, keys=["uid", "sid"], max_ids=None): #TODO DELETE BEFORE PUSHING
     # max_ids = max id per each key in keys
     if max_ids is None: #Must be defined
         raise AttributeError("len_keys must be defined")

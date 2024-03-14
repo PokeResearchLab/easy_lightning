@@ -2,12 +2,21 @@ import torch
 import pytorch_lightning as pl
 import multiprocessing
 from copy import deepcopy
-from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset #TODO: remove TensorDataset
 from . import model
 
 #TODO: pass this function inside torch_utils
 # Define a custom PyTorch Dataset class named DictDataset
 class DictDataset(Dataset):
+    """
+    Custom PyTorch Dataset class that takes a dictionary as input and returns items based on keys.
+
+    Args:
+        data (dict): Input dictionary containing data.
+
+    Returns:
+        dict: A dictionary where each key corresponds to a tensor item.
+    """
     # Constructor to initialize the dataset with input data
     def __init__(self, data):
         self.data = data
@@ -32,6 +41,25 @@ class DictDataset(Dataset):
 # Define a custom PyTorch Dataset class named DictSequentialDataset that extends DictDataset
 class DictSequentialDataset(DictDataset):
     # Constructor to initialize the sequential dataset with additional parameters
+    """
+    Custom PyTorch Dataset class for sequential data, extending the DictDataset.
+
+    Args:
+        data (dict): Input dictionary containing sequential data.
+        sequential_keys (list): List of keys in the data dictionary representing sequential data.
+        padding_value (float): Value to use for padding sequences.
+        left_pad (bool): If True, pad sequences on the left; otherwise, pad on the right.
+        lookback (int): Number of time steps to look back in the sequences. (length of input sequence)
+        stride (int): Stride for selecting subsequences.
+        lookforward (int): Number of time steps to look forward in the sequences.
+        simultaneous_lookforward (int): Number of simultaneous time steps to look forward.
+        out_seq_len (int): Length of the output sequence.
+        keep_last (int): Number of samples to keep in the output sequence.
+        drop_original (bool): If True, drop the original keys from the data dictionary.
+
+    Returns:
+        dict: A dictionary containing input and output sequences for each key.
+    """
     def __init__(self, 
                  data, 
                  sequential_keys=None, 
@@ -146,6 +174,24 @@ class DictSequentialDataset(DictDataset):
 # Define a custom PyTorch DataLoader class for recommendation datasets, inheriting from DataLoader
 class RecommendationDataloader(DataLoader):
     # Constructor to initialize the dataloader with required parameters and additional options
+    """
+    Custom PyTorch DataLoader class for recommendation datasets, extending the base DataLoader class.
+
+    Args:
+        dataset (Dataset): PyTorch Dataset object containing recommendation data.
+        original_sequences (list): List of original sequences.
+        num_items (int): Number of items in the dataset.
+        primary_key (str): Primary key for the dataset.
+        relevance (str): Type of relevance function to use.
+        num_negatives (int): Number of negative samples to generate.
+        padding_value (float): Value used for padding sequences.
+        mask_value (float): Value used for masking sequences.
+        mask_prob (float): Probability of applying masking to input sequences.
+        **kwargs: Additional keyword arguments for DataLoader.
+
+    Returns:
+        None
+    """
     def __init__(self, 
                  dataset, 
                  original_sequences, 
@@ -235,6 +281,7 @@ class RecommendationDataloader(DataLoader):
             yield out
 
 # TODO? Put inside RecommendationDataloader
+            # TODO: delete this functions beacuse dont use them in our code?
 # Function to generate a relevance function based on the specified relevance type and data shape
 def generate_relevance(relevance, out_key):
     if relevance in {None, "fixed", "linear", "exponential"}:
@@ -279,6 +326,17 @@ def prepare_rec_datasets(data,
                                      "test": ["sid", "timestamp", "rating", "uid"]},
                          **dataset_params
                          ):
+    """
+    Prepare recommendation datasets for training and evaluation.
+
+    Args:
+        data (dict): Input dictionary containing data.
+        split_keys (dict): Dictionary specifying keys for different splits.
+        **dataset_params: Additional parameters for dataset preparation.
+
+    Returns:
+        dict: Dictionary containing prepared recommendation datasets for each split.
+    """
 
     datasets = {}
     for split_name, data_keys in split_keys.items():
@@ -305,7 +363,20 @@ def prepare_rec_datasets(data,
 def prepare_rec_data_loaders(datasets, data,
                              split_keys = ["train", "val", "test"],
                              original_seq_key="sid",
-                             **loader_params):                         
+                             **loader_params):
+    """
+    Prepare recommendation data loaders for training and evaluation.
+
+    Args:
+        datasets (dict): Dictionary containing prepared recommendation datasets.
+        data (dict): Input dictionary containing data.
+        split_keys (list): List of split keys for data loaders.
+        original_seq_key (str): Key for original sequences in the data.
+        **loader_params: Additional parameters for data loader preparation.
+
+    Returns:
+        dict: Dictionary containing prepared recommendation data loaders for each split.
+    """                         
     # TODO: dict instead of list
     # I don't remember what I meant by this comment...
     
@@ -340,6 +411,17 @@ def prepare_rec_data_loaders(datasets, data,
     return loaders
 
 def create_rec_model(name, seed=42, **model_params):
+    """
+    Create a recommendation model.
+
+    Args:
+        name (str): Name of the recommendation model.
+        seed (int): Random seed for weight initialization.
+        **model_params: Additional parameters for model creation.
+
+    Returns:
+        torch.nn.Module: Instance of the recommendation model.
+    """
     # Set a random seed for weight initialization
     pl.seed_everything(seed)
     # Get the model from the model module

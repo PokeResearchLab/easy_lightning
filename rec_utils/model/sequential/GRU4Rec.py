@@ -1,33 +1,55 @@
 import torch
 
 class GRU4Rec(torch.nn.Module):
-    def __init__(self, num_items, hidden_size, num_layers=1,
-                 dropout_hidden=0, dropout_input=0, emb_size=128, **kwargs):
+    def __init__(self, 
+                 num_items, 
+                 hidden_size, 
+                 num_layers=1,
+                 dropout_hidden=0, 
+                 dropout_input=0, 
+                 emb_size=50, 
+                 padding_value = 0,
+                 **kwargs):
+        '''
+    args:
+        num_items (int): Number of items in the dataset.
+        hidden_size (int): Size of the hidden state in the GRU.
+        num_layers (int, optional): Number of layers in the GRU. Defaults to 1.
+        dropout_hidden (float, optional): Dropout rate for hidden states in the GRU. Defaults to 0.
+        dropout_input (float, optional): Dropout rate for input embeddings. Defaults to 0.
+        emb_size (int, optional): Size of the item embedding. Defaults to 50.
+    '''
+        
         super(GRU4Rec, self).__init__()
 
+        # Initialize model parameters
         self.num_items = num_items
         
         hidden = torch.zeros(num_layers, hidden_size, requires_grad=True)
         self.register_buffer("hidden", hidden) #register buffer is needed to move the tensor to the right device
 
+        # Dropout layer for input embeddings
         self.inp_dropout = torch.nn.Dropout(p=dropout_input)
 
+        # Linear layer for output logits
         self.h2o = torch.nn.Linear(hidden_size, num_items+1)
 
-        self.look_up = torch.nn.Embedding(num_items+1, emb_size)
+        # Item embedding layer
+        self.look_up = torch.nn.Embedding(num_items+1, emb_size, padding_idx=padding_value)
         
+        # GRU layer
         self.gru = torch.nn.GRU(emb_size, hidden_size, num_layers, dropout=dropout_hidden, batch_first=True)
 
     def forward(self, input_seqs, poss_item_seqs):
-        '''
-        TODO: rivedere
-        Args:
-            input (B,): a batch of item indices from a session-parallel mini-batch.
-            target (B,): torch.LongTensor of next item indices from a session-parallel mini-batch.
 
-        Returns:
-            logit (B,C): Variable that stores the logits for the next items in the session-parallel mini-batch
-            hidden: GRU hidden state
+        ''' 
+    Input:
+        input_seqs (torch.Tensor): Tensor containing input item sequences. Shape (batch_size, sequence_length).
+        poss_item_seqs (torch.Tensor): Tensor containing possible item sequences. Shape (batch_size, input_seq_len, output_seq_len, num_items)
+
+    Output:
+        scores (torch.Tensor): Tensor containing interaction scores between input and possible items. Shape (batch_size, input_seq_len, output_seq_len, num_items)
+
         '''
 
         embedded = self.look_up(input_seqs)

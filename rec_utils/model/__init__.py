@@ -1,5 +1,7 @@
 from .sequential.Caser import Caser
 from .sequential.CosRec import CosRec
+from .sequential.Caser import Caser
+from .sequential.CosRec import CosRec
 from .sequential.HGN import HGN
 from .sequential.GRU4Rec import GRU4Rec
 # from NARM import NARM
@@ -8,6 +10,7 @@ from .sequential.GRU4Rec import GRU4Rec
 from .sequential.SASRec import SASRec
 from .sequential.BERT4Rec import BERT4Rec
 from .sequential.NARM import NARM
+from .sequential.CORE import CORE
 # from S3Rec import S3Rec
 #TODO: trovare metodo più intelligente imports
 

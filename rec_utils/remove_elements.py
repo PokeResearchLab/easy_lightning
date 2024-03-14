@@ -1,3 +1,4 @@
+#TODO: DELETE DONT USE IT IN OUR CODE   
 class remove_elements(object):
     def __init__(self, cfg_data):
         self.input_list = cfg_data['input_list']

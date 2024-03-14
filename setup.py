@@ -14,6 +14,8 @@ if os.path.isfile("requirements.txt"):
         install_requires = f.read().splitlines()
 
 # Define the package setup configuration
+        
+        #TODO: CHECK!!!!!
 setup(
     name='Easy Lightning',  # Replace with your package name
     packages=['rec_utils'],  # List of all packages included in your project
