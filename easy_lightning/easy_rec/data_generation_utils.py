@@ -9,8 +9,7 @@ import numpy as np
 from ast import literal_eval
 import datetime
 from scipy import stats
-
-from easy_data.data import split_data
+#from easy_data.data import split_data
 
 
 def preprocess_dataset(name, 
@@ -343,8 +342,8 @@ def load_ratings_df(dataset_raw_folder, dataset_name):
     elif dataset_name == "tim":
         file_path = os.path.join(dataset_raw_folder,'dataset.csv')
         df = pd.read_csv(file_path, header=None, engine="python")
-        df.columns = ['uid', 'timestamp', "s_cat_name", 'rating', "offer_number"] + [f"PCAFeat_{i}" for i in range(64)] + ['sid']
-        df["rating"] = (df["rating"]=="Accettato")*1
+        df.columns = ['uid', 'timestamp', "s_cat_name", 'rating'] + [f"PCAFeat_{i}" for i in range(64)] + ['sid']
+        df["rating"] = (df["rating"]=="Accepted")*1
     elif dataset_name == "gowalla":
         sep = '\t'
         file_path = os.path.join(dataset_raw_folder, 'loc-gowalla_totalCheckins.txt')
@@ -503,15 +502,28 @@ def split_rec_data(data, split_method, split_keys, test_sizes, **kwargs):
     '''
     print('Splitting:',split_method)
     if split_method == 'leave_n_out':
-        for orig_key,new_keys in split_keys.items(): #TODO? float test_sizes
+       for orig_key,new_keys in split_keys.items():
             while len(test_sizes)<len(new_keys):
                 test_sizes.append(0)
+            
             end_ids = np.array([len(seq) for seq in data[orig_key]])
             previous_key = orig_key
-            for new_key,test_size in zip(new_keys[::-1],test_sizes[::-1]): #last key is the one with the most recent interactions
-                end_ids -= test_size
-                data[new_key] = np.array([seq[:end_ids[i]] for i,seq in enumerate(data[previous_key])], dtype=object)
+
+            for new_key,test_size in zip(new_keys[::-1],test_sizes[::-1]):
+                if isinstance(test_size, float): # Interpret float as percentage
+                    sub_lengths = np.floor((end_ids * (1 - test_size))).astype(int)
+                else: # Subtract integer count
+                    sub_lengths = end_ids - test_size
+
+                sub_lengths = np.clip(sub_lengths, 0, None) # Clamp to avoid negative indexing
+
+                data[new_key] = np.array(
+                    [seq[:sub_lengths[i]] for i, seq in enumerate(data[previous_key])],
+                    dtype=object
+                )
+                end_ids = sub_lengths
                 previous_key = new_key
+                
             if "del_after_split" in kwargs and kwargs["del_after_split"]:
                 del data[orig_key]
     # elif split_method == 'hold_out':

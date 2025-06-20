@@ -86,9 +86,9 @@ class BaseNN(pl.LightningModule):
         lightning_module_return = {"model_output": model_output}
 
         if self.loss is not None:
-            lightning_module_return["loss"] = self.compute_loss(batch, self.step_routing["loss_input_from_batch"],
+            lightning_module_return["loss"] = self.compute_loss(self.loss, batch, self.step_routing["loss_input_from_batch"],
                                      model_output, self.step_routing["loss_input_from_model_output"],
-                                     split_name)
+                                     split_name, dataloader_idx)
 
         if len(self.metrics)>0:
             lightning_module_return["metric_values"] = self.compute_metrics(batch, self.step_routing["metrics_input_from_batch"],

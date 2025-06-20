@@ -112,7 +112,7 @@ class SequentialCollator:
                  left_pad=True, 
                  lookforward=1, 
                  simultaneous_lookforward=1,
-                 #simultaneous_lookback = 0,
+                 simultaneous_lookback = 0,
                  out_seq_len=None,
                  keep_last = None,
                  drop_original=True):
@@ -124,7 +124,7 @@ class SequentialCollator:
         
         self.lookforward = lookforward
         self.simultaneous_lookforward = simultaneous_lookforward
-        #self.simultaneous_lookback = simultaneous_lookback
+        self.simultaneous_lookback = simultaneous_lookback
         self.out_seq_len = out_seq_len
         
         self.keep_last = keep_last
@@ -140,7 +140,7 @@ class SequentialCollator:
             self.pad_x_function = self.identity
             self.pad_out_func = self.identity
 
-        self.needed_length = self.lookback + self.lookforward + self.simultaneous_lookforward #+self.simultaneous_lookback
+        self.needed_length = self.lookback + self.lookforward + self.simultaneous_lookforward +self.simultaneous_lookback
         
     #Functions needed because AttributeError: Can't pickle local object 'SequentialCollator.__init__.<locals>.<lambda>'
     def identity(self, x):
@@ -203,15 +203,13 @@ class SequentialCollator:
     # Method to pair input and output sequences based on specified parameters
     # Now based on left_padding; TODO: reverse array if opposite
     def pair_input_output(self, data, seq_lens):
-        #TODO: check if this is better
-        #  if self.out_seq_len is None:
-        #     out_seq_len = seq_lens
-        # else:
-        #     if isinstance(self.out_seq_len, float):
-        #         out_seq_len = torch.ceil((self.out_seq_len*seq_lens)).int()
-        #     else:
-        #         out_seq_len = self.out_seq_len*torch.ones_like(seq_lens)
-        out_seq_len = seq_lens if self.out_seq_len is None else self.out_seq_len*torch.ones_like(seq_lens)
+        if self.out_seq_len is None:
+            out_seq_len = seq_lens
+        else:
+            if isinstance(self.out_seq_len, float):
+                out_seq_len = torch.ceil((self.out_seq_len*seq_lens)).int()
+            else:
+                out_seq_len = self.out_seq_len*torch.ones_like(seq_lens)
 
         # decide current point t;
         # input goes from t-lookback+1 to t;
@@ -244,9 +242,8 @@ class SequentialCollator:
         # Compute input indices based on output indices
         output_indices = input_indices + self.lookforward
 
-        # Add simultaneous_lookforward
-        output_indices = output_indices.unsqueeze(2) + torch.arange(self.simultaneous_lookforward).unsqueeze(0).unsqueeze(0)
-        #TODO: check output_indices = output_indices.unsqueeze(2) + torch.arange(-self.simultaneous_lookback,self.simultaneous_lookforward).unsqueeze(0).unsqueeze(0)
+        # Add simultaneous_lookforward and simultaneous_lookback to output indices
+        output_indices = output_indices.unsqueeze(2) + torch.arange(-self.simultaneous_lookback,self.simultaneous_lookforward).unsqueeze(0).unsqueeze(0)
 
         # Process each sequential key
         for key in self.sequential_keys:
@@ -301,8 +298,8 @@ class RecommendationSequentialCollator(SequentialCollator):
                  num_negatives = 1,
                  mask_value = None,
                  mask_prob = 0,
-                 #negatives_relevance = 0,
-                 #possible_negatives = "different",
+                 negatives_relevance = 0,
+                 possible_negatives = "different",
                  negatives_distribution = "uniform",
                  id_key="uid",
                  *args,**kwargs): #out_seq_len and padding_value are set by super().__init__
@@ -319,18 +316,18 @@ class RecommendationSequentialCollator(SequentialCollator):
         self.num_positives = num_positives
         self.num_negatives = num_negatives
 
-        # self.negatives_relevance = float(negatives_relevance)
+        self.negatives_relevance = float(negatives_relevance)
 
-        # if possible_negatives == "different":
-        #     self.possible_negatives_function = self.different_possible_negatives
-        # elif possible_negatives == "all":
-        #     self.possible_negatives_function = self.all_possible_negatives
-        # elif possible_negatives == "same":
-        #     self.possible_negatives_function = self.same_possible_negatives
-        # elif callable(possible_negatives):
-        #     self.possible_negatives_function = possible_negatives
-        # else:
-        #     raise NotImplementedError(f"Unsupported possible_negatives: {possible_negatives}")
+        if possible_negatives == "different":
+            self.possible_negatives_function = self.different_possible_negatives
+        elif possible_negatives == "all":
+            self.possible_negatives_function = self.all_possible_negatives
+        elif possible_negatives == "same":
+            self.possible_negatives_function = self.same_possible_negatives
+        elif callable(possible_negatives):
+            self.possible_negatives_function = possible_negatives
+        else:
+            raise NotImplementedError(f"Unsupported possible_negatives: {possible_negatives}")
         
         if negatives_distribution not in {"uniform",'dynamic'} and not isinstance(negatives_distribution, torch.Tensor): #modifica_g : aggiunto il caso di campionamento dinamico dei negativi  durante il training
             raise NotImplementedError(f"Unsupported negatives_distribution: {negatives_distribution}")
@@ -365,12 +362,11 @@ class RecommendationSequentialCollator(SequentialCollator):
     def __call__(self, batch):
         out = super().__call__(batch)
 
-        out["relevance"] = self.relevance_function(out)#.type(torch.float) # Add relevance scores to out
+        out["relevance"] = self.relevance_function(out).type(torch.float) # Add relevance scores to out #TODO: check type float
 
-        #if self.num_negatives > 0:
-        # Add negative samples to the out
-        timesteps = out[self.out_key].shape[1]
-        negatives = self.sample_negatives([x[self.primary_key] for x in batch], timesteps, [x[self.id_key] for x in batch])
+        if self.num_negatives > 0: # Add negative samples to the out
+            timesteps = out[self.out_key].shape[1]
+            negatives = self.sample_negatives([x[self.primary_key] for x in batch], timesteps, [x[self.id_key] for x in batch])
 
         out[self.in_key] = self.mask_input(out[self.in_key])
 
@@ -383,22 +379,18 @@ class RecommendationSequentialCollator(SequentialCollator):
 
         all_not_to_use = not_to_use.all(-1)
 
-        negatives[all_not_to_use] = self.padding_value # Pad negative if out (i.e. positives) is padding #.all(-1) for out because out can have multiple values, i.e. simultaneous_lookforward
-        # Masked tensor are a prototype in torch, but could solve many issues with padding and not wanting to compute losses or metrics on padding
-        #negatives = torch.masked.masked_tensor(negatives, out_is_padding.unsqueeze(-1))
+        if self.num_negatives > 0:
+            negatives[all_not_to_use] = self.padding_value # Pad negative if out (i.e. positives) is padding #.all(-1) for out because out can have multiple values, i.e. simultaneous_lookforward
+            # Masked tensor are a prototype in torch, but could solve many issues with padding and not wanting to compute losses or metrics on padding
+            #negatives = torch.masked.masked_tensor(negatives, out_is_padding.unsqueeze(-1))
 
-        out[self.out_key] = torch.cat([out[self.out_key], negatives], dim=-1) #concatenate negatives to out[out_key]
-        out["relevance"] = torch.cat([out["relevance"], torch.zeros_like(negatives)], dim=-1) #concatenate 0 relevance to relevance
+            out[self.out_key] = torch.cat([out[self.out_key], negatives], dim=-1) #concatenate negatives to out[out_key]
+        
+            negatives_relevance_tensor = self.negatives_relevance*torch.ones_like(negatives)
+            #negatives_relevance_tensor[negative_is_positive.any(-2)] = (out["relevance"][:,:,:self.num_positives,None]*negative_is_positive)[negative_is_positive].type(out["relevance"].dtype) # Do not use negative if is positive, i.e. positives cannot be negatives
+            out["relevance"] = torch.cat([out["relevance"], negatives_relevance_tensor], dim=-1) #concatenate negatives relevance to relevance
 
         out["relevance"][:,:,:not_to_use.shape[-1]][not_to_use] = float("nan") # Nan relevance if out is padding or input is not masked (if applicable)
-
-        # if self.num_negatives > 0:
-        #     negatives[all_not_to_use] = self.padding_value # Pad negative if out (i.e. positives) is padding #.all(-1) for out because out can have multiple values, i.e. simultaneous_lookforward
-        #     #negative_is_positive = torch.isclose(negatives.type(out[self.out_key].dtype)[:,:,None],out[self.out_key][:,:,:,None])
-        #     out[self.out_key] = torch.cat([out[self.out_key], negatives], dim=-1) #concatenate negatives to out[out_key]
-        #     negatives_relevance_tensor = self.negatives_relevance*torch.ones_like(negatives)
-        #     #negatives_relevance_tensor[negative_is_positive.any(-2)] = (out["relevance"][:,:,:self.num_positives,None]*negative_is_positive)[negative_is_positive].type(out["relevance"].dtype) # Do not use negative if is positive, i.e. positives cannot be negatives
-        #     out["relevance"] = torch.cat([out["relevance"], negatives_relevance_tensor], dim=-1) #concatenate negatives relevance to relevance
 
         out["relevance"][:,:,not_to_use.shape[-1]:][all_not_to_use] = float("nan") # Nan relevance if all out is padding
         return out
@@ -428,8 +420,7 @@ class RecommendationSequentialCollator(SequentialCollator):
         negatives = torch.zeros(len(original_sequences), self.num_negatives*t, dtype=torch.long)
         for i, (orig_seq,id_key) in enumerate(zip(original_sequences,id_keys)): #TODO: parallelize this
             # Get possible negative items that are not in the original sequence
-            possible_negatives = torch.tensor(list(set(range(1, self.num_items + 1)).difference(orig_seq))) #-1 is needed because index starts from 1
-            # = self.possible_negatives_function(orig_seq, id_key)
+            possible_negatives = self.possible_negatives_function(orig_seq, id_key)
             # Randomly sample num_negatives negative items
             negatives[i] = self.sample_from_negative_distribution(possible_negatives, self.num_negatives*t, id_key)
             #negatives[i] = possible_negatives[torch.randperm(len(possible_negatives))[:self.num_negatives*t]]
