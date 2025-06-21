@@ -361,7 +361,8 @@ class NDCG(RecMetric):
                 k = min(top_k,scores.shape[-1])
                 sorted_k_relevance = relevance.sort(dim=-1, descending=True).values[...,:k] #get first k items in sorted_relevance on last dimension  
                 idcg = (sorted_k_relevance/torch.log2(torch.arange(1,k+1,device=sorted_k_relevance.device)+1)).sum(-1)
-                ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
+                ndcg = torch.where(idcg == 0, torch.zeros_like(dcg), dcg/idcg) #avoid division by zero, if idcg is 0, set ndcg to 0
+                #ndcg = dcg/idcg # ndcg.shape = (num_samples, lookback)
                 if not self.batch_metric:
                     setattr(self, f"correct@{'_'.join([str(x) for x in [top_k,rank_correction_name] if x])}", getattr(self, f"correct@{'_'.join([str(x) for x in [top_k,rank_correction_name] if x])}") + ndcg.sum())
                 else:
@@ -457,7 +458,9 @@ class Recall(RecMetric):
         for rank_correction_name,rank_correction_function in self.rank_corrections.items():
             correct_ranks = rank_correction_function(ranks)
             for top_k in self.top_k:
-                recall = ((correct_ranks<=top_k)*relevant/relevant.sum(-1,keepdim=True)).sum(-1)
+                relevant_sum = relevant.sum(-1,keepdim=True)
+                recall = torch.where(relevant_sum <= 0, torch.zeros_like(relevant.sum(-1,keepdim=True)), ((correct_ranks<=top_k)*relevant/relevant_sum)).sum(-1)
+                #recall = ((correct_ranks<=top_k)*relevant/relevant.sum(-1,keepdim=True)).sum(-1)
                 #torch.minimum(relevant.sum(-1,keepdim=True),top_k*torch.ones_like(relevant.sum(-1,keepdim=True)))
                 if not self.batch_metric:
                     setattr(self, f"correct@{'_'.join([str(x) for x in [top_k,rank_correction_name] if x])}", getattr(self, f"correct@{'_'.join([str(x) for x in [top_k,rank_correction_name] if x])}") + recall.sum())
